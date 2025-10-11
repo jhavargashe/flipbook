@@ -1,114 +1,19 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Flipbook – Portafolio</title>
-
-  <!-- Librería STPageFlip (sin instalar nada) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/stpageflip@2.0.7/dist/css/stpageflip.css">
-
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: #ffffff; /* fondo blanco */
-      overflow: hidden;
-    }
-    .flipbook-wrapper {
-      width: 100%;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #ffffff;
-    }
-    #flipbook {
-      width: min(100%, 1100px);
-      height: min(90vh, 740px);
-      box-shadow: 0 0 20px rgba(0,0,0,0.1);
-    }
-    /* mensaje de depuración en caso de error */
-    #dbg {
-      position: fixed;
-      left: 12px; bottom: 12px;
-      max-width: 90vw;
-      padding: 10px 12px;
-      font: 12px/1.4 monospace;
-      background: #fff5f5; color: #8a1f1f;
-      border: 1px solid #f3c2c2; border-radius: 8px;
-      display: none;
-      white-space: pre-wrap;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Flipbook Interactivo</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Incluir la librería Flipbook Viewer -->
+    <script src="https://cdn.jsdelivr.net/gh/theproductiveprogrammer/flipbook-viewer@main/dist/flipbook-viewer.min.js"></script>
 </head>
-
 <body>
-  <div class="flipbook-wrapper">
-    <div id="flipbook"></div>
-  </div>
-
-  <div id="dbg"></div>
-
-  <!-- Librería JS del flipbook -->
-  <script src="https://cdn.jsdelivr.net/npm/stpageflip@2.0.7/dist/js/stpageflip.min.js"></script>
-
-  <script>
-    // 🖼️ Rutas de tus páginas (usa nombres reales y ordenados)
-    const PAGES = [
-      'pages/01.jpg',
-      'pages/02.jpg',
-      'pages/03.jpg'
-      // agrega más páginas aquí
-    ];
-
-    const dbg = (msg) => {
-      const el = document.getElementById('dbg');
-      el.style.display = 'block';
-      el.textContent += (el.textContent ? '\n' : '') + msg;
-      console.warn(msg);
-    };
-
-    window.addEventListener('error', (e) => dbg('Error JS: ' + (e.message || e)));
-    window.addEventListener('unhandledrejection', (e) => dbg('Rechazo Promesa: ' + (e.reason || e)));
-
-    document.addEventListener('DOMContentLoaded', () => {
-      try {
-        const container = document.getElementById('flipbook');
-
-        if (!window.St || !St.PageFlip) {
-          dbg('No se cargó la librería STPageFlip.');
-          return;
-        }
-
-        const pageFlip = new St.PageFlip(container, {
-          width: 550,
-          height: 740,
-          size: 'stretch',
-          maxShadowOpacity: 0.2,
-          showCover: true,
-          usePortrait: true,
-          mobileScrollSupport: false
-        });
-
-        pageFlip.loadFromImages(PAGES);
-
-        // Navegación por clic y teclas
-        container.addEventListener('click', (e) => {
-          const rect = container.getBoundingClientRect();
-          (e.clientX > rect.left + rect.width / 2)
-            ? pageFlip.flipNext()
-            : pageFlip.flipPrev();
-        });
-
-        document.addEventListener('keydown', (e) => {
-          if (e.key === 'ArrowRight') pageFlip.flipNext();
-          if (e.key === 'ArrowLeft') pageFlip.flipPrev();
-        });
-      } catch (err) {
-        dbg('Init Error: ' + err);
-      }
-    });
-  </script>
+    <div class="container">
+        <h1>Mi Libro Digital</h1>
+        <div id="flipbook-container" class="flipbook-wrapper"></div>
+    </div>
+    
+    <script type="module" src="script.js"></script>
 </body>
 </html>
