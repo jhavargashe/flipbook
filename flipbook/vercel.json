@@ -1,10 +1,16 @@
 {
   "version": 2,
-  "outputDirectory": "flipbook",
   "routes": [
+    {
+      "src": "/static/.*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
     {
       "src": "/(.*)",
       "dest": "/index.html"
     }
   ]
 }
+
