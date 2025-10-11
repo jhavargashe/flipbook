@@ -8,17 +8,17 @@
 </head>
 <body>
   <main class="stage">
-    <!-- libro -->
     <section id="book" class="book" aria-label="Flipbook">
-      <div id="left"  class="page left"></div>
-      <div id="right" class="page right"></div>
+      <div id="page-left"  class="page left"></div>
+      <div id="page-right" class="page right"></div>
 
-      <!-- hotspots invisibles para navegar -->
-      <button id="hot-left"  class="hot left"  aria-label="Página anterior"></button>
-      <button id="hot-right" class="hot right" aria-label="Página siguiente"></button>
+      <!-- zonas clicables (invisibles) -->
+      <button id="hot-left"  class="hot left"  aria-label="Anterior"></button>
+      <button id="hot-right" class="hot right" aria-label="Siguiente"></button>
     </section>
-  </main>
 
-  <script src="script.js" defer></script>
-</body>
-</html>
+    <!-- barra minimal -->
+    <nav class="bar">
+      <button id="btn-prev" class="icon" title="Anterior" aria-label="Anterior">⟵</button>
+      <input id="slider" class="slider" type="range" min="0" value="0" step="1" />
+      <button id="btn-fs" class="icon" title="Pantal
