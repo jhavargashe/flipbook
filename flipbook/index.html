@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mi Flipbook</title>
+
+  <!-- CSS de la librería (gratis y sin marcas) -->
+  <link rel="stylesheet" href="https://unpkg.com/stpageflip@2.0.7/dist/css/stpageflip.css">
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #ffffff; /* Fondo blanco */
+      overflow: hidden;
+    }
+
+    .flipbook-wrapper {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+    }
+
+    #flipbook {
+      width: min(100%, 1100px);
+      height: min(90vh, 740px);
+    }
+  </style>
+</head>
+<body>
+  <div class="flipbook-wrapper">
+    <div id="flipbook"></div>
+  </div>
+
+  <!-- JS de la librería -->
+  <script src="https://unpkg.com/stpageflip@2.0.7/dist/js/stpageflip.min.js"></script>
+  <script>
+    // 📘 Lista de tus páginas (imágenes)
+    const pages = [
+      'pages/01.jpg',
+      'pages/02.jpg',
+      'pages/03.jpg',
+      // agrega más si tienes
+    ];
+
+    const container = document.getElementById('flipbook');
+
+    const pageFlip = new St.PageFlip(container, {
+      width: 550,   // ancho de página
+      height: 740,  // alto de página
+      size: 'stretch',
+      maxShadowOpacity: 0.2,
+      showCover: true,
+      usePortrait: true,
+      mobileScrollSupport: false
+    });
+
+    pageFlip.loadFromImages(pages);
+
+    // Navegación básica
+    container.addEventListener('click', (e) => {
+      const mid = container.getBoundingClientRect().width / 2;
+      if (e.clientX > container.getBoundingClientRect().left + mid) {
+        pageFlip.flipNext();
+      } else {
+        pageFlip.flipPrev();
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') pageFlip.flipNext();
+      if (e.key === 'ArrowLeft') pageFlip.flipPrev();
+    });
+  </script>
+</body>
+</html>
