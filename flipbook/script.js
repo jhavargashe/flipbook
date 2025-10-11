@@ -1,16 +1,17 @@
 /***********************
  * Configuración
  ***********************/
-const AUTO_DETECT = true;   // detectar cuántas páginas hay
-const MAX_PAGES   = 150;    // límite de detección
-const TOTAL_PAGES = 10;     // si desactivas AUTO_DETECT
+const AUTO_DETECT = true;   // detecta cuántas páginas hay
+const MAX_PAGES   = 200;    // límite detección
+const TOTAL_PAGES = 10;     // si no detectas automáticamente
 const IMG = n => `assets/pdf-images/page-${n}.jpg`;
 
 /***********************
- * Estado y elementos
+ * Estado / elementos
  ***********************/
-let pages = [];     // rutas válidas
-let idx   = 0;      // índice del PAR visible (0->1-2, 2->3-4,...)
+let pages = [];      // rutas válidas detectadas
+let idx   = 0;       // índice PAR del spread actual: 0=(1,2), 2=(3,4)...
+let isAnimating = false;
 
 const book   = document.getElementById('book');
 const left   = document.getElementById('page-left');
@@ -22,23 +23,52 @@ const hotL   = document.getElementById('hot-left');
 const hotR   = document.getElementById('hot-right');
 
 const slider = document.getElementById('slider');
-const btnPrev= document.getElementById('btn-prev');
-const btnNext= document.getElementById('btn-next');
-const btnFS  = document.getElementById('btn-fs');
-const btnZoom= document.getElementById('btn-zoom');
+const fill   = document.getElementById('fill');
+
+const btnPrev  = document.getElementById('btn-prev');
+const btnNext  = document.getElementById('btn-next');
+const btnFirst = document.getElementById('btn-first');
+const btnLast  = document.getElementById('btn-last');
+const btnFS    = document.getElementById('btn-fs');
 
 /***********************
  * Utilidades
  ***********************/
 const clampPair = (i, L) => Math.max(0, Math.min(i - (i % 2), Math.max(0, L - 2)));
 
-function preload(srcs){ srcs.forEach(s => { const i = new Image(); i.src = s; }); }
+function easeInOutCubic(t){ return t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+
+function animateFlip(side, dir, onDone){
+  // dir: 1 => izquierda->derecha (prev),  -1 => derecha->izquierda (next)
+  if (isAnimating) return;
+  isAnimating = true;
+
+  const el = side === 'left' ? left : right;
+  const start = performance.now();
+  const D = 520; // ms
+
+  function frame(now){
+    const t = Math.min(1, (now - start) / D);
+    const k = easeInOutCubic(t);
+    const ang = (side === 'left' ? 1 : -1) * dir * 180 * k / 12; // giro sutil (≈15° pico)
+    el.style.transform = `rotateY(${ang}deg)`;
+    if (t < 1) requestAnimationFrame(frame);
+    else {
+      el.style.transform = 'rotateY(0deg)';
+      isAnimating = false;
+      onDone && onDone();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function preload(arr){ arr.forEach(s=>{ const i=new Image(); i.src=s; }); }
 
 function exists(url){
   return new Promise(res=>{
     const i = new Image();
     i.onload  = () => res({ok:true,  i});
-    i.onerror = () => res({ok:false, i});
+    i.onerror = () => res({ok:false,i});
     i.src = url + `?v=${Date.now()}`;
   });
 }
@@ -46,46 +76,55 @@ function exists(url){
 function setBookAspectFrom(img){
   const w = img.naturalWidth || 1000;
   const h = img.naturalHeight || 1500;
-  const bookAR = (2 * w) / h;              // libro abierto
-  book.style.setProperty('--book-ar', bookAR);
+  const ar = (2 * w) / h;                        // libro abierto = 2 páginas
+  book.style.setProperty('--book-ar', ar);
   // fallback para navegadores sin aspect-ratio
-  const size = () => { book.style.height = (book.clientWidth / bookAR) + 'px'; };
-  size(); addEventListener('resize', size);
+  const resize = () => { book.style.height = (book.clientWidth / ar) + 'px'; };
+  resize(); addEventListener('resize', resize);
 }
 
 /***********************
- * Render & navegación
+ * Render y navegación
  ***********************/
-function render(){
-  if (!pages.length){
-    btnPrev.disabled = btnNext.disabled = true;
-    slider.max = slider.value = 0;
-    imgL.removeAttribute('src'); imgR.removeAttribute('src');
-    return;
-  }
-
-  idx = clampPair(idx, pages.length);
-  imgL.src = pages[idx]     || '';
-  imgR.src = pages[idx + 1] || '';
-
+function updateUI(){
   const spreads = Math.ceil(pages.length / 2);
   slider.max = Math.max(0, spreads - 1);
   slider.value = Math.floor(idx / 2);
+  const pct = spreads ? (slider.value / (spreads - 1)) * 100 : 0;
+  fill.style.width = (isFinite(pct) ? pct : 0) + '%';
 
   const atStart = (idx <= 0);
   const atEnd   = (idx + 2 >= pages.length);
   btnPrev.disabled = hotL.disabled = atStart;
   btnNext.disabled = hotR.disabled = atEnd;
+  btnFirst.disabled = atStart;
+  btnLast.disabled  = atEnd;
 }
 
-function next(){ if (idx + 2 < pages.length){
-  right.classList.add('turn'); right.style.transform = 'rotateY(-14deg)';
-  setTimeout(()=>{ idx += 2; right.classList.remove('turn'); right.style.transform='rotateY(0)'; render(); }, 520);
-}}
-function prev(){ if (idx > 0){
-  left.classList.add('turn'); left.style.transform  = 'rotateY(14deg)';
-  setTimeout(()=>{ idx -= 2; left.classList.remove('turn'); left.style.transform='rotateY(0)'; render(); }, 520);
-}}
+function render(){
+  if (!pages.length){
+    imgL.removeAttribute('src'); imgR.removeAttribute('src');
+    updateUI(); return;
+  }
+  idx = clampPair(idx, pages.length);
+  imgL.src = pages[idx]     || '';
+  imgR.src = pages[idx + 1] || '';  // <- asegura siempre imagen derecha si existe
+  updateUI();
+}
+
+function next(){
+  if (isAnimating || idx + 2 >= pages.length) return;
+  // derecha se dobla hacia el centro (dir = -1)
+  animateFlip('right', -1, () => { idx += 2; render(); });
+}
+function prev(){
+  if (isAnimating || idx <= 0) return;
+  // izquierda se dobla hacia el centro (dir = 1)
+  animateFlip('left', 1, () => { idx -= 2; render(); });
+}
+
+function first(){ if (idx>0){ idx = 0; render(); } }
+function last(){ const lastPair = clampPair(pages.length-2, pages.length); idx = lastPair; render(); }
 
 /***********************
  * Eventos
@@ -94,6 +133,8 @@ hotR.addEventListener('click', next);
 hotL.addEventListener('click', prev);
 btnNext.addEventListener('click', next);
 btnPrev.addEventListener('click', prev);
+btnFirst.addEventListener('click', first);
+btnLast.addEventListener('click', last);
 
 document.addEventListener('keydown', (e)=>{
   if (e.key === 'ArrowRight') next();
@@ -103,51 +144,49 @@ document.addEventListener('keydown', (e)=>{
 let sx = null;
 book.addEventListener('pointerdown', e => sx = e.clientX);
 book.addEventListener('pointerup',   e => {
-  if (sx == null) return;
-  const dx = e.clientX - sx;
-  if (dx < -40) next();
-  if (dx >  40) prev();
-  sx = null;
+  if (sx == null) return; const dx = e.clientX - sx;
+  if (dx < -40) next(); if (dx > 40) prev(); sx = null;
 });
 
 slider.addEventListener('input', () => { idx = parseInt(slider.value,10) * 2; render(); });
 
 btnFS.addEventListener('click', () => {
-  const el = book; // pantalla completa solo del libro
-  if (!document.fullscreenElement) (el.requestFullscreen || document.documentElement.requestFullscreen).call(el);
-  else document.exitFullscreen && document.exitFullscreen();
+  const entering = btnFS.dataset.state !== 'exit';
+  if (entering){
+    (book.requestFullscreen || document.documentElement.requestFullscreen).call(book);
+  }else{
+    document.exitFullscreen && document.exitFullscreen();
+  }
 });
 
-let zoomOn = false;
-btnZoom.addEventListener('click', () => {
-  zoomOn = !zoomOn;
-  book.classList.toggle('zoom', zoomOn);
+document.addEventListener('fullscreenchange', () => {
+  const fs = !!document.fullscreenElement;
+  btnFS.dataset.state = fs ? 'exit' : 'enter';
+  btnFS.textContent   = fs ? '⤡' : '⤢'; // cambia ícono
 });
 
 /***********************
  * Inicio
  ***********************/
 (async function init(){
-  // Detectar páginas o usar TOTAL_PAGES
+  // detectar páginas o usar TOTAL_PAGES
   pages = (AUTO_DETECT)
     ? await (async () => {
-        const found = [];
+        const list = [];
         for (let n=1; n<=MAX_PAGES; n++){
           const r = await exists(IMG(n));
-          if (!r.ok){ if (found.length) break; else continue; }
-          found.push(IMG(n));
-          if (found.length === 1) setBookAspectFrom(r.i); // fija ratio al detectar la primera
+          if (!r.ok){ if (list.length) break; else continue; }
+          list.push(IMG(n));
+          if (list.length === 1) setBookAspectFrom(r.i); // ratio desde la primera
         }
-        return found;
+        return list;
       })()
     : Array.from({length: TOTAL_PAGES}, (_,i)=>IMG(i+1));
 
-  if (pages.length === 0){
-    console.warn('No se detectaron imágenes. Revisa rutas: assets/pdf-images/page-1.jpg, etc.');
-    return render();
+  if (!pages.length){
+    console.warn('No se detectaron imágenes. Verifica assets/pdf-images/page-1.jpg, etc.');
+  }else{
+    preload(pages.slice(0,6));
   }
-
-  // Precarga ligera
-  preload(pages.slice(0,6));
   render();
 })();
