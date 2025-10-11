@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flipbook Interactivo</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Incluir la librería Flipbook Viewer -->
     <script src="https://cdn.jsdelivr.net/gh/theproductiveprogrammer/flipbook-viewer@main/dist/flipbook-viewer.min.js"></script>
 </head>
 <body>
@@ -13,13 +14,15 @@
             <h1>📖 Mi Flipbook Digital</h1>
             <div class="controls">
                 <button id="prev-btn" class="btn">← Anterior</button>
-                <span id="page-indicator">Página 1 de 10</span>
+                <span id="page-indicator">Página 1 de <span id="total-pages">0</span></span>
                 <button id="next-btn" class="btn">Siguiente →</button>
             </div>
         </header>
         
         <main>
-            <div id="flipbook-container" class="flipbook-wrapper"></div>
+            <div id="flipbook-container" class="flipbook-wrapper">
+                <div class="loading">Cargando flipbook...</div>
+            </div>
         </main>
         
         <footer>
