@@ -1,157 +1,92 @@
-// Configuración del flipbook
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🔄 Iniciando flipbook...');
-    
-    // CONFIGURACIÓN IMPORTANTE: Cambia este número por el total de tus páginas
-    const TOTAL_PAGES = 10;
-    
-    const book = {
-        numPages: () => TOTAL_PAGES,
-        
-        getPage: (pageNum, callback) => {
-            const pageNumber = pageNum + 1;
-            // Asegúrate que esta ruta coincida con tus archivos
-            const imagePath = `assets/pdf-images/page-${pageNumber}.jpg`;
-            
-            console.log(`🔄 Cargando página ${pageNumber}: ${imagePath}`);
-            
-            const img = new Image();
-            img.src = imagePath;
-            
-            img.onload = () => {
-                console.log(`✅ Página ${pageNumber} cargada correctamente`);
-                callback(null, img);
-            };
-            
-            img.onerror = () => {
-                console.error(`❌ Error al cargar: ${imagePath}`);
-                console.log('Verifica que:');
-                console.log('1. El archivo existe en assets/pdf-images/');
-                console.log('2. Se llama page-' + pageNumber + '.jpg');
-                console.log('3. La imagen no está corrupta');
-                createFallbackPage(pageNumber, callback);
-            };
-        }
-    };
+// ======== CONFIGURA AQUÍ EL TOTAL DE PÁGINAS ========
+const TOTAL_PAGES = 10; // <-- cámbialo al número real (page-1.jpg ... page-N.jpg)
+// =====================================================
 
-    // Crear página de respaldo si hay error
-    function createFallbackPage(pageNumber, callback) {
-        console.log(`🔄 Creando página de respaldo ${pageNumber}`);
-        
+function makeBook(total) {
+  return {
+    numPages: () => total,
+    getPage: (pageNum, cb) => {
+      const n = pageNum + 1;
+      const src = `assets/pdf-images/page-${n}.jpg`;
+
+      const img = new Image();
+      img.onload = () => cb(null, img);
+      img.onerror = () => {
+        console.error(`❌ No se pudo cargar ${src}. Se mostrará una página de respaldo.`);
+        // Página de respaldo
         const canvas = document.createElement('canvas');
-        canvas.width = 800;
-        canvas.height = 600;
-        const ctx = canvas.getContext('2d');
-        
-        // Fondo
-        ctx.fillStyle = '#f0f0f0';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Texto
-        ctx.fillStyle = '#333';
-        ctx.font = '24px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(`Página ${pageNumber}`, canvas.width / 2, canvas.height / 2);
-        ctx.font = '16px Arial';
-        ctx.fillText('Imagen no disponible', canvas.width / 2, canvas.height / 2 + 40);
-        
-        const img = new Image();
-        img.src = canvas.toDataURL();
-        img.onload = () => callback(null, img);
+        canvas.width = 800; canvas.height = 600;
+        const c = canvas.getContext('2d');
+        c.fillStyle = '#f0f0f0'; c.fillRect(0,0,800,600);
+        c.fillStyle = '#333'; c.font = '24px Arial'; c.textAlign = 'center';
+        c.fillText(`Página ${n}`, 400, 290);
+        c.font = '16px Arial';
+        c.fillText('Imagen no disponible', 400, 325);
+        const fallback = new Image();
+        fallback.onload = () => cb(null, fallback);
+        fallback.src = canvas.toDataURL();
+      };
+      img.src = src;
     }
+  };
+}
 
-    // Inicializar flipbook
-    let flipbookViewer;
-    
-    function initializeFlipbook() {
-        if (typeof init !== 'undefined') {
-            init(book, 'flipbook-container', (err, viewer) => {
-                if (err) {
-                    console.error('❌ Error inicializando flipbook:', err);
-                    showError();
-                } else {
-                    console.log('✅ Flipbook inicializado correctamente');
-                    flipbookViewer = viewer;
-                    setupControls(viewer);
-                    setupKeyboardNavigation(viewer);
-                    updateTotalPages(TOTAL_PAGES);
-                    updateControls();
-                }
-            });
-        } else {
-            console.error('❌ Flipbook Viewer no se cargó correctamente');
-            setTimeout(initializeFlipbook, 100); // Reintentar
-        }
-    }
+function updateIndicator(viewer) {
+  const el = document.getElementById('page-indicator');
+  const current = (viewer?.get_page_num?.() ?? 0) + 1;
+  const total = viewer?.page_count ?? TOTAL_PAGES;
+  el.textContent = `Página ${current} de ${total}`;
 
-    function setupControls(viewer) {
-        const prevBtn = document.getElementById('prev-btn');
-        const nextBtn = document.getElementById('next-btn');
-        const pageIndicator = document.getElementById('page-indicator');
+  document.getElementById('prev-btn').disabled = current === 1;
+  document.getElementById('next-btn').disabled = current === total;
+}
 
-        function updateControls() {
-            if (!viewer) return;
-            const currentPage = viewer.get_page_num() + 1;
-            const totalPages = viewer.page_count;
-            
-            pageIndicator.textContent = `Página ${currentPage} de ${totalPages}`;
-            prevBtn.disabled = currentPage === 1;
-            nextBtn.disabled = currentPage === totalPages;
-        }
+function showError() {
+  const container = document.getElementById('flipbook-container');
+  container.innerHTML = `
+    <div class="error-message">
+      <h3>⚠️ Error al cargar el flipbook</h3>
+      <p>Verifica que existan las imágenes en <code>assets/pdf-images/</code> y que TOTAL_PAGES sea correcto.</p>
+    </div>`;
+}
 
-        prevBtn.addEventListener('click', () => {
-            viewer.prev_page();
-            updateControls();
-        });
+function boot() {
+  if (typeof init === 'undefined') {
+    // la librería aún no está lista, reintenta
+    return setTimeout(boot, 100);
+  }
 
-        nextBtn.addEventListener('click', () => {
-            viewer.next_page();
-            updateControls();
-        });
+  const book = makeBook(TOTAL_PAGES);
 
-        viewer.on('seen', updateControls);
-        updateControls();
-    }
+  init(book, 'flipbook-container', (err, viewer) => {
+    if (err || !viewer) return showError();
 
-    function setupKeyboardNavigation(viewer) {
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowLeft') {
-                viewer.prev_page();
-                updateControls();
-            } else if (e.key === 'ArrowRight') {
-                viewer.next_page();
-                updateControls();
-            }
-        });
-    }
+    // total de páginas (UI)
+    const totalEl = document.getElementById('total-pages');
+    if (totalEl) totalEl.textContent = TOTAL_PAGES;
 
-    function updateTotalPages(total) {
-        const totalPagesElement = document.getElementById('total-pages');
-        if (totalPagesElement) {
-            totalPagesElement.textContent = total;
-        }
-    }
+    // Controles
+    document.getElementById('prev-btn').addEventListener('click', () => {
+      viewer.prev_page();
+      updateIndicator(viewer);
+    });
+    document.getElementById('next-btn').addEventListener('click', () => {
+      viewer.next_page();
+      updateIndicator(viewer);
+    });
 
-    function showError() {
-        const container = document.getElementById('flipbook-container');
-        container.innerHTML = `
-            <div class="error-message">
-                <h3>⚠️ Error al cargar el flipbook</h3>
-                <p>Por favor, verifica que:</p>
-                <ul>
-                    <li>Las imágenes estén en la carpeta <strong>assets/pdf-images/</strong></li>
-                    <li>Los archivos se llamen <strong>page-1.jpg, page-2.jpg, etc.</strong></li>
-                    <li>El número total de páginas en script.js sea correcto</li>
-                    <li>Revisa la consola del navegador (F12) para más detalles</li>
-                </ul>
-            </div>
-        `;
-    }
+    // Teclado
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft')  { viewer.prev_page(); updateIndicator(viewer); }
+      if (e.key === 'ArrowRight') { viewer.next_page(); updateIndicator(viewer); }
+    });
 
-    // Inicializar cuando todo esté listo
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeFlipbook);
-    } else {
-        initializeFlipbook();
-    }
-});
+    // Evento del visor
+    viewer.on('seen', () => updateIndicator(viewer));
+
+    updateIndicator(viewer);
+  });
+}
+
+// arranca cuando el DOM esté listo (los scripts usan defer)
+boot();
