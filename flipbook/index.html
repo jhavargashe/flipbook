@@ -1,38 +1,24 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Flipbook Interactivo</title>
-
-  <link rel="stylesheet" href="styles.css"/>
-
-  <!-- Librería Flipbook Viewer (global 'init') -->
-  <script defer src="https://cdn.jsdelivr.net/gh/theproductiveprogrammer/flipbook-viewer@main/dist/flipbook-viewer.min.js"></script>
-
-  <!-- Tu lógica; usa defer para que cargue después de la librería -->
-  <script defer src="script.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flipbook</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>📖 Mi Flipbook Digital</h1>
-      <div class="controls">
-        <button id="prev-btn" class="btn">← Anterior</button>
-        <span id="page-indicator">Página 1 de <span id="total-pages">0</span></span>
-        <button id="next-btn" class="btn">Siguiente →</button>
-      </div>
-    </header>
+  <main class="stage">
+    <!-- libro -->
+    <section id="book" class="book" aria-label="Flipbook">
+      <div id="left"  class="page left"></div>
+      <div id="right" class="page right"></div>
 
-    <main>
-      <div id="flipbook-container" class="flipbook-wrapper">
-        <div class="loading">Cargando flipbook...</div>
-      </div>
-    </main>
+      <!-- hotspots invisibles para navegar -->
+      <button id="hot-left"  class="hot left"  aria-label="Página anterior"></button>
+      <button id="hot-right" class="hot right" aria-label="Página siguiente"></button>
+    </section>
+  </main>
 
-    <footer>
-      <p>Usa las flechas del teclado o haz clic en las esquinas para pasar páginas</p>
-    </footer>
-  </div>
+  <script src="script.js" defer></script>
 </body>
 </html>
