@@ -1,18 +1,19 @@
 /***********************
  * Configuración
  ***********************/
-const AUTO_DETECT = true;   // detecta cuántas páginas hay
-const MAX_PAGES   = 200;    // límite detección
-const TOTAL_PAGES = 10;     // si no detectas automáticamente
+const AUTO_DETECT = true;   // intenta detectar cuántas páginas hay
+const MAX_PAGES   = 200;    // tope de búsqueda
+const TOTAL_PAGES = 10;     // si desactivas AUTO_DETECT
 const IMG = n => `assets/pdf-images/page-${n}.jpg`;
 
 /***********************
  * Estado / elementos
  ***********************/
-let pages = [];      // rutas válidas detectadas
-let idx   = 0;       // índice PAR del spread actual: 0=(1,2), 2=(3,4)...
+let pages = [];      // rutas válidas detectadas (una por hoja)
+let idx   = 0;       // índice PAR: 0=(1,2), 2=(3,4)...
 let isAnimating = false;
 
+const viewer = document.getElementById('viewer');
 const book   = document.getElementById('book');
 const left   = document.getElementById('page-left');
 const right  = document.getElementById('page-right');
@@ -35,22 +36,19 @@ const btnFS    = document.getElementById('btn-fs');
  * Utilidades
  ***********************/
 const clampPair = (i, L) => Math.max(0, Math.min(i - (i % 2), Math.max(0, L - 2)));
-
 function easeInOutCubic(t){ return t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
 
 function animateFlip(side, dir, onDone){
-  // dir: 1 => izquierda->derecha (prev),  -1 => derecha->izquierda (next)
   if (isAnimating) return;
   isAnimating = true;
-
   const el = side === 'left' ? left : right;
   const start = performance.now();
-  const D = 520; // ms
+  const D = 520;
 
   function frame(now){
     const t = Math.min(1, (now - start) / D);
     const k = easeInOutCubic(t);
-    const ang = (side === 'left' ? 1 : -1) * dir * 180 * k / 12; // giro sutil (≈15° pico)
+    const ang = (side === 'left' ? 1 : -1) * dir * 15 * k; // ≈15°
     el.style.transform = `rotateY(${ang}deg)`;
     if (t < 1) requestAnimationFrame(frame);
     else {
@@ -69,28 +67,28 @@ function exists(url){
     const i = new Image();
     i.onload  = () => res({ok:true,  i});
     i.onerror = () => res({ok:false,i});
-    i.src = url + `?v=${Date.now()}`;
+    i.src = url + `?v=${Date.now()}`; // evita caché
   });
 }
 
 function setBookAspectFrom(img){
   const w = img.naturalWidth || 1000;
   const h = img.naturalHeight || 1500;
-  const ar = (2 * w) / h;                        // libro abierto = 2 páginas
+  const ar = (2 * w) / h;                        // libro abierto
   book.style.setProperty('--book-ar', ar);
-  // fallback para navegadores sin aspect-ratio
+  // fallback si el navegador no soporta aspect-ratio
   const resize = () => { book.style.height = (book.clientWidth / ar) + 'px'; };
   resize(); addEventListener('resize', resize);
 }
 
 /***********************
- * Render y navegación
+ * Render & UI
  ***********************/
 function updateUI(){
   const spreads = Math.ceil(pages.length / 2);
   slider.max = Math.max(0, spreads - 1);
   slider.value = Math.floor(idx / 2);
-  const pct = spreads ? (slider.value / (spreads - 1)) * 100 : 0;
+  const pct = spreads > 1 ? (slider.value / (spreads - 1)) * 100 : 0;
   fill.style.width = (isFinite(pct) ? pct : 0) + '%';
 
   const atStart = (idx <= 0);
@@ -108,21 +106,15 @@ function render(){
   }
   idx = clampPair(idx, pages.length);
   imgL.src = pages[idx]     || '';
-  imgR.src = pages[idx + 1] || '';  // <- asegura siempre imagen derecha si existe
+  imgR.src = pages[idx + 1] || '';  // derecha siempre intenta cargar su hoja
   updateUI();
 }
 
-function next(){
-  if (isAnimating || idx + 2 >= pages.length) return;
-  // derecha se dobla hacia el centro (dir = -1)
-  animateFlip('right', -1, () => { idx += 2; render(); });
-}
-function prev(){
-  if (isAnimating || idx <= 0) return;
-  // izquierda se dobla hacia el centro (dir = 1)
-  animateFlip('left', 1, () => { idx -= 2; render(); });
-}
-
+/***********************
+ * Navegación
+ ***********************/
+function next(){ if (!isAnimating && idx + 2 < pages.length) animateFlip('right', -1, () => { idx += 2; render(); }); }
+function prev(){ if (!isAnimating && idx > 0)                animateFlip('left',   1, () => { idx -= 2; render(); }); }
 function first(){ if (idx>0){ idx = 0; render(); } }
 function last(){ const lastPair = clampPair(pages.length-2, pages.length); idx = lastPair; render(); }
 
@@ -153,7 +145,7 @@ slider.addEventListener('input', () => { idx = parseInt(slider.value,10) * 2; re
 btnFS.addEventListener('click', () => {
   const entering = btnFS.dataset.state !== 'exit';
   if (entering){
-    (book.requestFullscreen || document.documentElement.requestFullscreen).call(book);
+    (viewer.requestFullscreen || document.documentElement.requestFullscreen).call(viewer);
   }else{
     document.exitFullscreen && document.exitFullscreen();
   }
@@ -162,28 +154,35 @@ btnFS.addEventListener('click', () => {
 document.addEventListener('fullscreenchange', () => {
   const fs = !!document.fullscreenElement;
   btnFS.dataset.state = fs ? 'exit' : 'enter';
-  btnFS.textContent   = fs ? '⤡' : '⤢'; // cambia ícono
+  btnFS.textContent   = fs ? '⤡' : '⤢'; // cambia icono
 });
 
 /***********************
- * Inicio
+ * Init
  ***********************/
 (async function init(){
-  // detectar páginas o usar TOTAL_PAGES
-  pages = (AUTO_DETECT)
-    ? await (async () => {
-        const list = [];
-        for (let n=1; n<=MAX_PAGES; n++){
-          const r = await exists(IMG(n));
-          if (!r.ok){ if (list.length) break; else continue; }
-          list.push(IMG(n));
-          if (list.length === 1) setBookAspectFrom(r.i); // ratio desde la primera
-        }
-        return list;
-      })()
-    : Array.from({length: TOTAL_PAGES}, (_,i)=>IMG(i+1));
+  // Detección: recorre hasta MAX_PAGES, no se corta en el primer hueco.
+  if (AUTO_DETECT){
+    const list = [];
+    let gaps = 0;                 // tolera huecos (por si falta page-2.jpg, etc.)
+    const GAP_LIMIT = 8;          // detén cuando encuentre 8 seguidas que no existen
+    for (let n=1; n<=MAX_PAGES; n++){
+      const r = await exists(IMG(n));
+      if (r.ok){
+        list.push(IMG(n));
+        gaps = 0;
+        if (list.length === 1) setBookAspectFrom(r.i); // fija ratio desde la primera
+      } else {
+        gaps++;
+        if (list.length && gaps >= GAP_LIMIT) break;
+      }
+    }
+    pages = list;
+  } else {
+    pages = Array.from({length: TOTAL_PAGES}, (_,i)=>IMG(i+1));
+  }
 
-  if (!pages.length){
+  if (pages.length === 0){
     console.warn('No se detectaron imágenes. Verifica assets/pdf-images/page-1.jpg, etc.');
   }else{
     preload(pages.slice(0,6));
