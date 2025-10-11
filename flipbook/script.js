@@ -1,26 +1,43 @@
 // Configuración del flipbook
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔄 Iniciando flipbook...');
+    
+    // CONFIGURACIÓN IMPORTANTE: Cambia este número por el total de tus páginas
+    const TOTAL_PAGES = 10;
+    
     const book = {
-        numPages: () => 10, // Cambia este número según tus páginas
+        numPages: () => TOTAL_PAGES,
         
         getPage: (pageNum, callback) => {
+            const pageNumber = pageNum + 1;
+            // Asegúrate que esta ruta coincida con tus archivos
+            const imagePath = `assets/pdf-images/page-${pageNumber}.jpg`;
+            
+            console.log(`🔄 Cargando página ${pageNumber}: ${imagePath}`);
+            
             const img = new Image();
-            // Asegúrate de que las imágenes estén en assets/pdf-images/
-            img.src = `assets/pdf-images/page-${pageNum + 1}.jpg`;
+            img.src = imagePath;
+            
             img.onload = () => {
-                console.log(`Página ${pageNum + 1} cargada correctamente`);
+                console.log(`✅ Página ${pageNumber} cargada correctamente`);
                 callback(null, img);
             };
-            img.onerror = (error) => {
-                console.error(`Error cargando página ${pageNum + 1}:`, error);
-                // Imagen de respaldo si hay error
-                createFallbackPage(pageNum + 1, callback);
+            
+            img.onerror = () => {
+                console.error(`❌ Error al cargar: ${imagePath}`);
+                console.log('Verifica que:');
+                console.log('1. El archivo existe en assets/pdf-images/');
+                console.log('2. Se llama page-' + pageNumber + '.jpg');
+                console.log('3. La imagen no está corrupta');
+                createFallbackPage(pageNumber, callback);
             };
         }
     };
 
-    // Crear página de respaldo
+    // Crear página de respaldo si hay error
     function createFallbackPage(pageNumber, callback) {
+        console.log(`🔄 Creando página de respaldo ${pageNumber}`);
+        
         const canvas = document.createElement('canvas');
         canvas.width = 800;
         canvas.height = 600;
@@ -46,21 +63,25 @@ document.addEventListener('DOMContentLoaded', function() {
     // Inicializar flipbook
     let flipbookViewer;
     
-    if (typeof init !== 'undefined') {
-        init(book, 'flipbook-container', (err, viewer) => {
-            if (err) {
-                console.error('Error inicializando flipbook:', err);
-                showError();
-            } else {
-                console.log('✅ Flipbook inicializado correctamente');
-                flipbookViewer = viewer;
-                setupControls(viewer);
-                setupKeyboardNavigation(viewer);
-            }
-        });
-    } else {
-        console.error('❌ Flipbook Viewer no se cargó correctamente');
-        showError();
+    function initializeFlipbook() {
+        if (typeof init !== 'undefined') {
+            init(book, 'flipbook-container', (err, viewer) => {
+                if (err) {
+                    console.error('❌ Error inicializando flipbook:', err);
+                    showError();
+                } else {
+                    console.log('✅ Flipbook inicializado correctamente');
+                    flipbookViewer = viewer;
+                    setupControls(viewer);
+                    setupKeyboardNavigation(viewer);
+                    updateTotalPages(TOTAL_PAGES);
+                    updateControls();
+                }
+            });
+        } else {
+            console.error('❌ Flipbook Viewer no se cargó correctamente');
+            setTimeout(initializeFlipbook, 100); // Reintentar
+        }
     }
 
     function setupControls(viewer) {
@@ -69,9 +90,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const pageIndicator = document.getElementById('page-indicator');
 
         function updateControls() {
-            pageIndicator.textContent = `Página ${viewer.get_page_num() + 1} de ${viewer.page_count}`;
-            prevBtn.disabled = viewer.get_page_num() === 0;
-            nextBtn.disabled = viewer.get_page_num() === viewer.page_count - 1;
+            if (!viewer) return;
+            const currentPage = viewer.get_page_num() + 1;
+            const totalPages = viewer.page_count;
+            
+            pageIndicator.textContent = `Página ${currentPage} de ${totalPages}`;
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage === totalPages;
         }
 
         prevBtn.addEventListener('click', () => {
@@ -84,7 +109,6 @@ document.addEventListener('DOMContentLoaded', function() {
             updateControls();
         });
 
-        // Actualizar controles cuando cambie la página
         viewer.on('seen', updateControls);
         updateControls();
     }
@@ -101,6 +125,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    function updateTotalPages(total) {
+        const totalPagesElement = document.getElementById('total-pages');
+        if (totalPagesElement) {
+            totalPagesElement.textContent = total;
+        }
+    }
+
     function showError() {
         const container = document.getElementById('flipbook-container');
         container.innerHTML = `
@@ -108,19 +139,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h3>⚠️ Error al cargar el flipbook</h3>
                 <p>Por favor, verifica que:</p>
                 <ul>
-                    <li>Las imágenes estén en la carpeta assets/pdf-images/</li>
-                    <li>Los archivos se llamen page-1.jpg, page-2.jpg, etc.</li>
-                    <li>El número de páginas en script.js sea correcto</li>
+                    <li>Las imágenes estén en la carpeta <strong>assets/pdf-images/</strong></li>
+                    <li>Los archivos se llamen <strong>page-1.jpg, page-2.jpg, etc.</strong></li>
+                    <li>El número total de páginas en script.js sea correcto</li>
+                    <li>Revisa la consola del navegador (F12) para más detalles</li>
                 </ul>
             </div>
         `;
     }
 
-    function updateControls() {
-        if (!flipbookViewer) return;
-        const pageIndicator = document.getElementById('page-indicator');
-        if (pageIndicator) {
-            pageIndicator.textContent = `Página ${flipbookViewer.get_page_num() + 1} de ${flipbookViewer.page_count}`;
-        }
+    // Inicializar cuando todo esté listo
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeFlipbook);
+    } else {
+        initializeFlipbook();
     }
 });
