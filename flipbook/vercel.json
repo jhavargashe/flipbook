@@ -1,12 +1,10 @@
 {
   "version": 2,
+  "name": "flipbook",
   "builds": [
     {
       "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "outputDirectory": "dist" // Replace with your folder name
-      }
+      "use": "@vercel/static-build"
     }
   ],
   "routes": [
@@ -14,5 +12,12 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ]
+  ],
+  "outputDirectory": ".",
+  "functions": {
+    "**/*.html": {
+      "runtime": "@vercel/static"
+    }
+  }
 }
+
