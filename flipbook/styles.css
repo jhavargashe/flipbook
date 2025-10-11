@@ -2,35 +2,34 @@
   --book-ar: 3/2;                 /* se recalcula por JS */
   --radius: 16px;
   --shadow: 0 18px 55px rgba(0,0,0,.18);
-  --bg: #f5f6f7;                  /* gris muy claro */
-  --rail: #cbcbcb;
-  --fill: #6f6f6f;
+  --bg: #f5f6f7;                  /* gris muy claro (modo normal) */
 
-  /* tema por defecto = claro (modo normal) */
+  /* colores barra/botones (tema normal = claro) */
   --tc-bg: rgba(255,255,255,.92);
   --tc-shadow: 0 6px 20px rgba(0,0,0,.12);
   --icon-bg: #fff;
   --icon-fg: #222;
   --icon-bd: #d9d9d9;
+
+  --rail: #cbcbcb;   /* barra base */
+  --fill: #6f6f6f;   /* progreso */
 }
 
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
 button{border:0;background:none;padding:0;cursor:pointer}
 
+/* Centro absoluto del contenido (libro + barra) */
 .viewer{
-  position:relative;
   min-height:100vh;
   display:grid;
-  grid-template-rows: auto 1fr auto; /* arriba (botones), libro, barra */
-  align-items:center;
+  place-items:center;
+  position:relative;
 }
 
-/* ---------- BARRA SUPERIOR ---------- */
+/* Barra superior (siempre arriba-derecha) */
 .top-controls{
-  position:absolute;
-  left:50%; transform:translateX(-50%);
-  top:8px; z-index:10;
+  position:fixed; right:16px; top:16px; z-index:10;
   display:flex; gap:8px;
   background: var(--tc-bg);
   border-radius:12px; padding:6px 8px;
@@ -48,11 +47,13 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .icon:disabled{opacity:.35;cursor:not-allowed}
 .icon:hover{transform:translateY(-1px)}
 
-/* ---------- LIBRO ---------- */
-.stage{
-  display:grid; place-items:center;
-  padding:54px 18px 0;  /* espacio para la barra de arriba */
+/* Pila vertical: libro + barra, centrada */
+.stack{
+  display:flex; flex-direction:column; align-items:center; gap:12px;
+  width:100%;
 }
+
+/* Libro */
 .book{
   position:relative;
   width:min(96vw, 1280px);
@@ -62,7 +63,6 @@ button{border:0;background:none;padding:0;cursor:pointer}
   box-shadow:var(--shadow);
   overflow:hidden;
   perspective:2200px;
-  margin-bottom:10px; /* acerca la barra de abajo al libro */
 }
 .gutter{
   position:absolute; inset:0; z-index:1; pointer-events:none;
@@ -81,7 +81,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .page.right { right:0; transform-origin:left  center; box-shadow: inset  8px 0 18px rgba(0,0,0,.06); }
 .page img{ width:100%; height:100%; object-fit:contain; display:block; background:#fff; }
 
-/* Doblado al hover */
+/* Doblado sutil al hover */
 .page::after{
   content:""; position:absolute; inset:-2px; pointer-events:none; opacity:0; transition:opacity .22s ease;
   background: radial-gradient(120px 120px at 100% 100%, rgba(0,0,0,.22), transparent 60%);
@@ -90,13 +90,21 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .page.right:hover{ transform: rotateY(-9deg); }
 .page.left:hover { transform: rotateY( 9deg);  }
 .page:hover::after{ opacity:.7 }
+
+/* Zonas clicables */
 .hot{ position:absolute; top:0; width:22%; height:100%; opacity:0; z-index:3; }
 .hot.left{ left:0 } .hot.right{ right:0 }
 
-/* ---------- BARRA INFERIOR (tipo Heyzine) ---------- */
-.bar{ display:flex; align-items:center; justify-content:center; padding:0 18px 18px; }
+/* Barra inferior rediseñada (tipo botones) */
+.bar{ width:100%; display:flex; justify-content:center; }
+.bar-box{
+  background: var(--tc-bg);
+  border-radius:12px;
+  box-shadow: var(--tc-shadow);
+  padding:10px;
+}
 .rail{
-  position:relative; width:min(96vw,1280px); height:16px; border-radius:999px;
+  position:relative; width:min(96vw, 1280px); height:16px; border-radius:999px;
   background: var(--rail);
   box-shadow: inset 0 2px 5px rgba(0,0,0,.08);
 }
@@ -113,13 +121,12 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .slider::-webkit-slider-thumb{ -webkit-appearance:none; width:0; height:0; } /* oculto */
 .slider::-moz-range-thumb{ width:0; height:0; border:0; }                 /* oculto */
 
-/* ---------- FULLSCREEN = tema oscuro y botones arriba-derecha ---------- */
-:fullscreen .top-controls{
-  left:auto; transform:none; right:16px; top:16px;
-}
+/* FULLSCREEN: tema oscuro, contenido igualmente centrado */
 :fullscreen .viewer{
   --tc-bg: rgba(20,20,20,.88);
   --tc-shadow: 0 10px 30px rgba(0,0,0,.35);
   --icon-bg:#111; --icon-fg:#fff; --icon-bd:#0000;
-  background:#000;        /* fondo oscuro en fullscreen */
+  --rail:#8d8d8d; --fill:#2a2a2a;
+  background:#000;
 }
+/* Botones ya están fixed en top-right; libro y barra quedan centrados */
