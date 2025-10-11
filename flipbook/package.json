@@ -7,9 +7,14 @@
     "build": "echo 'Build completado - Flipbook listo'",
     "dev": "echo 'Ejecutando en modo desarrollo'"
   },
-  "keywords": ["flipbook", "pdf", "interactive"],
+  "keywords": [
+    "flipbook",
+    "pdf",
+    "interactive"
+  ],
   "author": "Tu Nombre",
   "license": "MIT",
   "dependencies": {},
   "devDependencies": {}
 }
+
