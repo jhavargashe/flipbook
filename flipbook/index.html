@@ -3,79 +3,109 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mi Flipbook</title>
+  <title>Flipbook</title>
 
-  <!-- CSS de la librería (gratis y sin marcas) -->
-  <link rel="stylesheet" href="https://unpkg.com/stpageflip@2.0.7/dist/css/stpageflip.css">
+  <!-- Usa la copia local (evita bloqueos de CDN) -->
+  <link rel="stylesheet" href="/lib/stpageflip.css">
 
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: #ffffff; /* Fondo blanco */
-      overflow: hidden;
-    }
-
+    html, body { height: 100%; margin: 0; background: #fff; }
     .flipbook-wrapper {
       width: 100%;
-      height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #ffffff;
+      height: 100vh;           /* asegura altura */
+      display: grid;
+      place-items: center;
+      background: #fff;
     }
-
     #flipbook {
       width: min(100%, 1100px);
       height: min(90vh, 740px);
+    }
+    /* Caja de error visible si algo falla */
+    #dbg {
+      position: fixed; left: 12px; bottom: 12px;
+      max-width: 90vw; padding: 10px 12px;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #fff5f5; color: #8a1f1f; border: 1px solid #f3c2c2; border-radius: 8px;
+      display: none; white-space: pre-wrap;
     }
   </style>
 </head>
 <body>
   <div class="flipbook-wrapper">
-    <div id="flipbook"></div>
+    <div id="flipbook" aria-label="Flipbook"></div>
   </div>
 
-  <!-- JS de la librería -->
-  <script src="https://unpkg.com/stpageflip@2.0.7/dist/js/stpageflip.min.js"></script>
+  <div id="dbg"></div>
+
+  <!-- JS local -->
+  <script src="/lib/stpageflip.min.js"></script>
   <script>
-    // 📘 Lista de tus páginas (imágenes)
-    const pages = [
-      'pages/01.jpg',
-      'pages/02.jpg',
-      'pages/03.jpg',
-      'pages/04.jpg',
-      'pages/05.jpg',
-      // agrega más si tienes
+    // ---- Configura tus páginas aquí ----
+    const PAGES = [
+      '/pages/02.jpg',
+      '/pages/03.jpg',
+      '/pages/04.jpg'
+      // agrega más...
     ];
+    // ------------------------------------
 
-    const container = document.getElementById('flipbook');
+    const dbg = (msg) => {
+      const el = document.getElementById('dbg');
+      el.style.display = 'block';
+      el.textContent += (el.textContent ? '\n' : '') + msg;
+      console.warn(msg);
+    };
 
-    const pageFlip = new St.PageFlip(container, {
-      width: 550,   // ancho de página
-      height: 740,  // alto de página
-      size: 'stretch',
-      maxShadowOpacity: 0.2,
-      showCover: true,
-      usePortrait: true,
-      mobileScrollSupport: false
-    });
+    // Muestra errores JS en pantalla
+    window.addEventListener('error', (e) => dbg('JS Error: ' + (e?.message || e)));
+    window.addEventListener('unhandledrejection', (e) => dbg('Promise Rejection: ' + (e?.reason || e)));
 
-    pageFlip.loadFromImages(pages);
+    function exists(url) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({url, ok: true});
+        img.onerror = () => resolve({url, ok: false});
+        img.src = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now();
+      });
+    }
 
-    // Navegación básica
-    container.addEventListener('click', (e) => {
-      const mid = container.getBoundingClientRect().width / 2;
-      if (e.clientX > container.getBoundingClientRect().left + mid) {
-        pageFlip.flipNext();
-      } else {
-        pageFlip.flipPrev();
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        if (!window.St || !St.PageFlip) {
+          dbg('No se cargó stpageflip. ¿/lib/stpageflip.min.js existe?');
+          return;
+        }
+
+        // Chequea que existan las primeras imágenes (te avisa en pantalla si falta alguna)
+        const checks = await Promise.all(PAGES.slice(0, 3).map(exists));
+        checks.forEach(r => { if (!r.ok) dbg('No se encuentra: ' + r.url); });
+
+        const container = document.getElementById('flipbook');
+        const pageFlip = new St.PageFlip(container, {
+          width: 550,
+          height: 740,
+          size: 'stretch',
+          maxShadowOpacity: 0.2,
+          showCover: true,
+          usePortrait: true,
+          mobileScrollSupport: false
+        });
+
+        pageFlip.loadFromImages(PAGES);
+
+        // Navegación
+        container.addEventListener('click', (e) => {
+          const rect = container.getBoundingClientRect();
+          (e.clientX > rect.left + rect.width / 2) ? pageFlip.flipNext() : pageFlip.flipPrev();
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowRight') pageFlip.flipNext();
+          if (e.key === 'ArrowLeft') pageFlip.flipPrev();
+        });
+      } catch (err) {
+        dbg('Init Error: ' + err);
       }
-    });
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight') pageFlip.flipNext();
-      if (e.key === 'ArrowLeft') pageFlip.flipPrev();
     });
   </script>
 </body>
