@@ -1,7 +1,15 @@
 {
-  "name": "flipbook-project",
+  "name": "flipbook",
   "version": "1.0.0",
+  "description": "Flipbook interactivo con efectos de página",
+  "type": "module",
   "scripts": {
-    "build": "echo 'Build completo'"
-  }
+    "build": "echo 'Build completado - Flipbook listo'",
+    "dev": "echo 'Ejecutando en modo desarrollo'"
+  },
+  "keywords": ["flipbook", "pdf", "interactive"],
+  "author": "Tu Nombre",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
 }
