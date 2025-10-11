@@ -5,7 +5,53 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Flipbook</title>
   <link rel="stylesheet" href="styles.css" />
+</head><!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flipbook</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
+<body>
+  <!-- Todo el visor (botones + libro + barra) entra a pantalla completa -->
+  <div id="viewer" class="viewer">
+    <!-- Barra superior (centrada en modo normal; top-right en fullscreen) -->
+    <div class="top-controls" aria-label="Controles">
+      <button id="btn-first" class="icon" title="Primera">≪</button>
+      <button id="btn-prev"  class="icon" title="Anterior">〈</button>
+      <button id="btn-grid"  class="icon" title="Vista mosaico">▦</button>
+      <button id="btn-fs"    class="icon" title="Pantalla completa" data-state="enter">⤢</button>
+      <button id="btn-next"  class="icon" title="Siguiente">〉</button>
+      <button id="btn-last"  class="icon" title="Última">≫</button>
+    </div>
+
+    <!-- Área del libro -->
+    <main class="stage">
+      <section id="book" class="book" aria-label="Flipbook">
+        <span class="gutter"></span>
+        <div id="page-left"  class="page left"><img id="img-left"  alt=""></div>
+        <div id="page-right" class="page right"><img id="img-right" alt=""></div>
+
+        <!-- Zonas clicables invisibles -->
+        <button id="hot-left"  class="hot left"  aria-label="Anterior"></button>
+        <button id="hot-right" class="hot right" aria-label="Siguiente"></button>
+      </section>
+    </main>
+
+    <!-- Barra inferior tipo Heyzine -->
+    <nav class="bar">
+      <div class="rail">
+        <div class="fill" id="fill"></div>
+        <input id="slider" class="slider" type="range" min="0" value="0" step="1" />
+      </div>
+    </nav>
+  </div>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
+
 <body>
   <!-- viewer: lo que entra en pantalla completa (incluye botones, libro y barra) -->
   <div id="viewer" class="viewer">
@@ -44,3 +90,4 @@
   <script src="script.js" defer></script>
 </body>
 </html>
+
