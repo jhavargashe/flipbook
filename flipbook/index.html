@@ -3,15 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Flipbook Interactivo</title>
+    <title>Flipbook Interactivo</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Incluir la librería Flipbook Viewer -->
     <script src="https://cdn.jsdelivr.net/gh/theproductiveprogrammer/flipbook-viewer@main/dist/flipbook-viewer.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>Mi Libro Digital</h1>
-        <div id="flipbook-container" class="flipbook-wrapper"></div>
+        <header>
+            <h1>📖 Mi Flipbook Digital</h1>
+            <div class="controls">
+                <button id="prev-btn" class="btn">← Anterior</button>
+                <span id="page-indicator">Página 1 de 10</span>
+                <button id="next-btn" class="btn">Siguiente →</button>
+            </div>
+        </header>
+        
+        <main>
+            <div id="flipbook-container" class="flipbook-wrapper"></div>
+        </main>
+        
+        <footer>
+            <p>Usa las flechas del teclado o haz clic en las esquinas para pasar páginas</p>
+        </footer>
     </div>
     
     <script type="module" src="script.js"></script>
