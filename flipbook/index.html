@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Flipbook – Portafolio</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/stpageflip@2.0.7/dist/css/stpageflip.css">
+    <link rel="stylesheet" href="https://raw.githubusercontent.com/StPageFlip/StPageFlip/master/dist/css/stpageflip.css">
 
     <style>
         html, body {
             height: 100%;
             margin: 0;
-            background: #ffffff;
+            background: #ffffff; /* fondo blanco */
             overflow: hidden;
         }
         .flipbook-wrapper {
@@ -27,7 +27,7 @@
             height: min(90vh, 740px);
             box-shadow: 0 0 20px rgba(0,0,0,0.1);
         }
-        /* mensaje de depuración en caso de error */
+        /* Estilo para el mensaje de depuración en caso de error */
         #dbg {
             position: fixed;
             left: 12px; bottom: 12px;
@@ -49,17 +49,18 @@
 
     <div id="dbg"></div>
 
-    <script src="https://unpkg.com/stpageflip@2.0.7/dist/js/stpageflip.min.js"></script>
+    <script src="https://raw.githubusercontent.com/StPageFlip/StPageFlip/master/dist/js/stpageflip.min.js"></script>
 
     <script>
-        // 🖼️ Rutas de tus páginas (debe existir la carpeta 'pages' con tus archivos .jpg)
+        // 🖼️ Rutas de tus páginas. ¡Asegúrate de que la carpeta 'pages' existe y contiene estos archivos .jpg!
         const PAGES = [
             'pages/01.jpg',
             'pages/02.jpg',
             'pages/03.jpg'
-            // agrega más páginas aquí
+            // agrega más páginas aquí (e.g., 'pages/04.jpg', etc.)
         ];
 
+        // Función para mostrar mensajes de depuración en pantalla
         const dbg = (msg) => {
             const el = document.getElementById('dbg');
             el.style.display = 'block';
@@ -74,36 +75,43 @@
             try {
                 const container = document.getElementById('flipbook');
 
-                // Si la librería se carga correctamente con UNPKG, este if no se ejecutará
+                // Verificación de la librería
                 if (!window.St || !St.PageFlip) {
-                    dbg('No se cargó la librería STPageFlip. (Asegúrese de subir la versión con UNPKG)');
+                    dbg('¡ERROR CRÍTICO! La librería STPageFlip no se cargó. Esto suele ser un bloqueo de red.');
                     return;
                 }
 
+                // Inicialización del Flipbook
                 const pageFlip = new St.PageFlip(container, {
-                    width: 550,
-                    height: 740,
-                    size: 'stretch',
+                    width: 550,          // Ancho de una sola página en px
+                    height: 740,         // Alto de una sola página en px
+                    size: 'stretch',     // El libro se adapta al contenedor
                     maxShadowOpacity: 0.2,
                     showCover: true,
                     usePortrait: true,
                     mobileScrollSupport: false
                 });
 
+                // Carga de las imágenes
                 pageFlip.loadFromImages(PAGES);
 
-                // Navegación por clic y teclas
+                // --- Eventos de Navegación ---
+
+                // 1. Navegación por clic
                 container.addEventListener('click', (e) => {
                     const rect = container.getBoundingClientRect();
+                    // Si el clic es en la mitad derecha, pasa a la siguiente página.
                     (e.clientX > rect.left + rect.width / 2)
                         ? pageFlip.flipNext()
                         : pageFlip.flipPrev();
                 });
 
+                // 2. Navegación por teclas de flecha
                 document.addEventListener('keydown', (e) => {
                     if (e.key === 'ArrowRight') pageFlip.flipNext();
                     if (e.key === 'ArrowLeft') pageFlip.flipPrev();
                 });
+
             } catch (err) {
                 dbg('Init Error: ' + err);
             }
