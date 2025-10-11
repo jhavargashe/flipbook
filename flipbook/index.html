@@ -7,37 +7,39 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="stage">
-    <!-- controles superiores (grupo minimal) -->
+  <!-- viewer: lo que entra en pantalla completa (incluye botones, libro y barra) -->
+  <div id="viewer" class="viewer">
+    <!-- Controles superiores -->
     <div class="top-controls" aria-label="Controles">
       <button id="btn-first" class="icon" title="Primera">≪</button>
       <button id="btn-prev"  class="icon" title="Anterior">〈</button>
       <button id="btn-grid"  class="icon" title="Vista mosaico">▦</button>
       <button id="btn-fs"    class="icon" title="Pantalla completa" data-state="enter">⤢</button>
-      <!-- cuando está en fullscreen cambiamos a ⤡ via JS -->
       <button id="btn-next"  class="icon" title="Siguiente">〉</button>
       <button id="btn-last"  class="icon" title="Última">≫</button>
     </div>
 
-    <!-- área libro -->
-    <section id="book" class="book" aria-label="Flipbook">
-      <span class="gutter"></span>
-      <div id="page-left"  class="page left"><img id="img-left"  alt=""></div>
-      <div id="page-right" class="page right"><img id="img-right" alt=""></div>
+    <!-- Área libro -->
+    <main class="stage">
+      <section id="book" class="book" aria-label="Flipbook">
+        <span class="gutter"></span>
+        <div id="page-left"  class="page left"><img id="img-left"  alt=""></div>
+        <div id="page-right" class="page right"><img id="img-right" alt=""></div>
 
-      <!-- zonas clicables invisibles -->
-      <button id="hot-left"  class="hot left"  aria-label="Anterior"></button>
-      <button id="hot-right" class="hot right" aria-label="Siguiente"></button>
-    </section>
+        <!-- zonas clicables invisibles -->
+        <button id="hot-left"  class="hot left"  aria-label="Anterior"></button>
+        <button id="hot-right" class="hot right" aria-label="Siguiente"></button>
+      </section>
+    </main>
 
-    <!-- barra inferior tipo Heyzine -->
+    <!-- Barra inferior tipo Heyzine -->
     <nav class="bar">
       <div class="rail">
         <div class="fill" id="fill"></div>
         <input id="slider" class="slider" type="range" min="0" value="0" step="1" />
       </div>
     </nav>
-  </main>
+  </div>
 
   <script src="script.js" defer></script>
 </body>
