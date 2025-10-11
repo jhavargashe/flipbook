@@ -1,0 +1,10 @@
+[build]
+  publish = "."
+# Si tus archivos están en flipbook/, usa:
+# publish = "flipbook"
+
+# Opcional: encabezados CORS (si los necesitas)
+#[[headers]]
+#  for = "/*"
+#  [headers.values]
+#    Access-Control-Allow-Origin = "*"
