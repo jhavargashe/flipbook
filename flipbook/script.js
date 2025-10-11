@@ -1,15 +1,23 @@
 /***********************
  * Configuración
  ***********************/
-const AUTO_DETECT = true;   // intenta detectar cuántas páginas hay
-const MAX_PAGES   = 200;    // tope de búsqueda
-const TOTAL_PAGES = 10;     // si desactivas AUTO_DETECT
-const IMG = n => `assets/pdf-images/page-${n}.jpg`;
+const AUTO_DETECT = true;   // detectar páginas automáticamente
+const MAX_PAGES   = 300;    // tope de búsqueda
+const TOTAL_PAGES = 10;     // si no detectas auto
+
+/* Patrones de nombre y extensiones admitidas */
+const NAME_PATTERNS = n => ([
+  `page-${n}`,                              // page-1
+  `page-${String(n).padStart(2,'0')}`,     // page-01
+  `page-${String(n).padStart(3,'0')}`,     // page-001
+]);
+const EXT = ['jpg','jpeg','png','webp'];
+const PATH = base => `assets/pdf-images/${base}`;
 
 /***********************
  * Estado / elementos
  ***********************/
-let pages = [];      // rutas válidas detectadas (una por hoja)
+let pages = [];      // rutas válidas (una por hoja)
 let idx   = 0;       // índice PAR: 0=(1,2), 2=(3,4)...
 let isAnimating = false;
 
@@ -48,14 +56,10 @@ function animateFlip(side, dir, onDone){
   function frame(now){
     const t = Math.min(1, (now - start) / D);
     const k = easeInOutCubic(t);
-    const ang = (side === 'left' ? 1 : -1) * dir * 15 * k; // ≈15°
+    const ang = (side === 'left' ? 1 : -1) * dir * 15 * k; // giro ~15°
     el.style.transform = `rotateY(${ang}deg)`;
     if (t < 1) requestAnimationFrame(frame);
-    else {
-      el.style.transform = 'rotateY(0deg)';
-      isAnimating = false;
-      onDone && onDone();
-    }
+    else { el.style.transform = 'rotateY(0deg)'; isAnimating = false; onDone && onDone(); }
   }
   requestAnimationFrame(frame);
 }
@@ -65,18 +69,32 @@ function preload(arr){ arr.forEach(s=>{ const i=new Image(); i.src=s; }); }
 function exists(url){
   return new Promise(res=>{
     const i = new Image();
-    i.onload  = () => res({ok:true,  i});
-    i.onerror = () => res({ok:false,i});
+    i.onload  = () => res({ok:true,  i, url});
+    i.onerror = () => res({ok:false, i, url});
     i.src = url + `?v=${Date.now()}`; // evita caché
   });
 }
 
+/* Devuelve la primera coincidencia válida para el número n */
+async function findOne(n){
+  const cands = [];
+  for (const name of NAME_PATTERNS(n))
+    for (const ext of EXT)
+      cands.push(PATH(`${name}.${ext}`));
+
+  for (const u of cands){
+    const r = await exists(u);
+    if (r.ok) return r.url;
+  }
+  return null;
+}
+
+/* Fija el aspect ratio del libro (libro abierto = 2 páginas) */
 function setBookAspectFrom(img){
   const w = img.naturalWidth || 1000;
   const h = img.naturalHeight || 1500;
-  const ar = (2 * w) / h;                        // libro abierto
+  const ar = (2 * w) / h;
   book.style.setProperty('--book-ar', ar);
-  // fallback si el navegador no soporta aspect-ratio
   const resize = () => { book.style.height = (book.clientWidth / ar) + 'px'; };
   resize(); addEventListener('resize', resize);
 }
@@ -106,17 +124,17 @@ function render(){
   }
   idx = clampPair(idx, pages.length);
   imgL.src = pages[idx]     || '';
-  imgR.src = pages[idx + 1] || '';  // derecha siempre intenta cargar su hoja
+  imgR.src = pages[idx + 1] || '';  // una por hoja
   updateUI();
 }
 
 /***********************
  * Navegación
  ***********************/
-function next(){ if (!isAnimating && idx + 2 < pages.length) animateFlip('right', -1, () => { idx += 2; render(); }); }
-function prev(){ if (!isAnimating && idx > 0)                animateFlip('left',   1, () => { idx -= 2; render(); }); }
-function first(){ if (idx>0){ idx = 0; render(); } }
-function last(){ const lastPair = clampPair(pages.length-2, pages.length); idx = lastPair; render(); }
+const next = () => { if (!isAnimating && idx + 2 < pages.length) animateFlip('right', -1, () => { idx += 2; render(); }); };
+const prev = () => { if (!isAnimating && idx > 0)                animateFlip('left',   1, () => { idx -= 2; render(); }); };
+const first= () => { if (idx>0){ idx = 0; render(); } };
+const last = () => { const lastPair = clampPair(pages.length-2, pages.length); idx = lastPair; render(); };
 
 /***********************
  * Eventos
@@ -137,55 +155,55 @@ let sx = null;
 book.addEventListener('pointerdown', e => sx = e.clientX);
 book.addEventListener('pointerup',   e => {
   if (sx == null) return; const dx = e.clientX - sx;
-  if (dx < -40) next(); if (dx > 40) prev(); sx = null;
+  if (dx < -40) next(); if (dx >  40) prev(); sx = null;
 });
 
 slider.addEventListener('input', () => { idx = parseInt(slider.value,10) * 2; render(); });
 
 btnFS.addEventListener('click', () => {
   const entering = btnFS.dataset.state !== 'exit';
+  const target = viewer; // fullscreen de todo
   if (entering){
-    (viewer.requestFullscreen || document.documentElement.requestFullscreen).call(viewer);
+    (target.requestFullscreen || document.documentElement.requestFullscreen).call(target);
   }else{
     document.exitFullscreen && document.exitFullscreen();
   }
 });
-
 document.addEventListener('fullscreenchange', () => {
   const fs = !!document.fullscreenElement;
   btnFS.dataset.state = fs ? 'exit' : 'enter';
-  btnFS.textContent   = fs ? '⤡' : '⤢'; // cambia icono
+  btnFS.textContent   = fs ? '⤡' : '⤢';
 });
 
 /***********************
- * Init
+ * Init (detección robusta)
  ***********************/
 (async function init(){
-  // Detección: recorre hasta MAX_PAGES, no se corta en el primer hueco.
   if (AUTO_DETECT){
     const list = [];
-    let gaps = 0;                 // tolera huecos (por si falta page-2.jpg, etc.)
-    const GAP_LIMIT = 8;          // detén cuando encuentre 8 seguidas que no existen
+    let misses = 0;       // cuenta huecos consecutivos
+    let ratioSet = false;
+
     for (let n=1; n<=MAX_PAGES; n++){
-      const r = await exists(IMG(n));
-      if (r.ok){
-        list.push(IMG(n));
-        gaps = 0;
-        if (list.length === 1) setBookAspectFrom(r.i); // fija ratio desde la primera
-      } else {
-        gaps++;
-        if (list.length && gaps >= GAP_LIMIT) break;
+      const url = await findOne(n);
+      if (url){
+        list.push(url);
+        misses = 0;
+        if (!ratioSet){
+          const r = await exists(url);
+          if (r.ok) setBookAspectFrom(r.i);
+          ratioSet = true;
+        }
+      }else{
+        if (list.length) misses++;
+        if (list.length && misses >= 6) break; // detiene al detectar varios huecos seguidos
       }
     }
     pages = list;
   } else {
-    pages = Array.from({length: TOTAL_PAGES}, (_,i)=>IMG(i+1));
+    pages = Array.from({length: TOTAL_PAGES}, (_,i)=>`assets/pdf-images/page-${i+1}.jpg`);
   }
 
-  if (pages.length === 0){
-    console.warn('No se detectaron imágenes. Verifica assets/pdf-images/page-1.jpg, etc.');
-  }else{
-    preload(pages.slice(0,6));
-  }
+  if (pages.length) preload(pages.slice(0,6));
   render();
 })();
