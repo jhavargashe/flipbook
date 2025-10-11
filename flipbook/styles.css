@@ -1,31 +1,28 @@
 :root{
-  /* se recalcula por JS según tu primera imagen */
-  --book-ar: 3/2;                 /* aspect-ratio libro abierto */
+  --book-ar: 3/2;                 /* se recalcula según tu 1ª imagen */
   --radius: 16px;
   --shadow: 0 18px 55px rgba(0,0,0,.18);
-  --bg: #f4f5f6;                  /* gris MUY claro del fondo */
-  --rail: #cfcfcf;                /* barra clara */
-  --fill: #7d7d7d;                /* barra progreso oscuro */
+  --bg: #f5f6f7;                  /* gris MUY claro del fondo */
+  --rail: #cbcbcb;
+  --fill: #6f6f6f;
 }
 
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
 button{border:0;background:none;padding:0;cursor:pointer}
 
-/* escena con sombra, libro flotando */
-.stage{
-  position:relative;
+/* Contenedor que entra a fullscreen */
+.viewer{
   min-height:100vh;
   display:grid;
-  grid-template-rows: 1fr auto;
-  place-items:center;
-  padding:18px 18px 26px;
+  grid-template-rows: auto 1fr auto;
+  align-items:center;
 }
 
-/* controles superiores (siempre visibles, también en fullscreen) */
+/* Controles superiores (flotantes, visibles en fullscreen) */
 .top-controls{
   position:fixed; top:16px; right:16px; display:flex; gap:10px; z-index:10;
-  background: rgba(255,255,255,.85);
+  background: rgba(255,255,255,.88);
   border-radius:12px; padding:8px 10px;
   box-shadow: 0 6px 20px rgba(0,0,0,.12);
   backdrop-filter: blur(6px);
@@ -38,7 +35,11 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .icon:disabled{opacity:.35;cursor:not-allowed}
 .icon:hover{transform:translateY(-1px)}
 
-/* libro */
+/* Escena y libro */
+.stage{
+  display:grid; place-items:center;
+  padding:24px 18px 10px;
+}
 .book{
   position:relative;
   width:min(96vw, 1280px);
@@ -49,8 +50,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
   overflow:hidden;
   perspective:2200px;
 }
-
-/* sombra central/gutter */
+/* Sombra y volumen tipo Heyzine */
 .gutter{
   position:absolute; inset:0; z-index:1; pointer-events:none;
   background:
@@ -60,7 +60,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
   opacity:.33;
 }
 
-/* páginas */
+/* Páginas */
 .page{
   position:absolute; inset:0; width:50%; height:100%; z-index:2;
   background:#fff; overflow:hidden;
@@ -68,12 +68,9 @@ button{border:0;background:none;padding:0;cursor:pointer}
 }
 .page.left  { left:0;  transform-origin:right center; box-shadow: inset -8px 0 18px rgba(0,0,0,.06); }
 .page.right { right:0; transform-origin:left  center; box-shadow: inset  8px 0 18px rgba(0,0,0,.06); }
+.page img{ width:100%; height:100%; object-fit:contain; display:block; background:#fff; }
 
-.page img{
-  width:100%; height:100%; object-fit:contain; display:block; background:#fff;
-}
-
-/* doblez al hover (curl sutil) */
+/* Doblado al hover */
 .page::after{
   content:""; position:absolute; inset:-2px; pointer-events:none; opacity:0; transition:opacity .22s ease;
   background: radial-gradient(120px 120px at 100% 100%, rgba(0,0,0,.22), transparent 60%);
@@ -83,14 +80,14 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .page.left:hover { transform: rotateY( 9deg);  }
 .page:hover::after{ opacity:.7 }
 
-/* zonas clicables */
+/* Zonas clicables */
 .hot{ position:absolute; top:0; width:22%; height:100%; opacity:0; z-index:3; }
 .hot.left{ left:0 } .hot.right{ right:0 }
 
-/* barra inferior (rail + fill + slider invis) */
-.bar{ width:min(96vw, 1280px); }
+/* Barra inferior */
+.bar{ display:flex; align-items:center; justify-content:center; padding:8px 18px 22px; }
 .rail{
-  position:relative; width:100%; height:16px; border-radius:999px;
+  position:relative; width:min(96vw,1280px); height:16px; border-radius:999px;
   background: var(--rail);
   box-shadow: inset 0 2px 5px rgba(0,0,0,.08);
 }
@@ -107,11 +104,5 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .slider::-webkit-slider-thumb{ -webkit-appearance:none; width:0; height:0; } /* oculto */
 .slider::-moz-range-thumb{ width:0; height:0; border:0; }                 /* oculto */
 
-/* fullscreen: botones visibles */
-:fullscreen .top-controls{ position:fixed; }
-
-/* responsive */
-@media (max-width:680px){
-  :root{ --radius:12px }
-  .icon{ width:34px; height:34px; font-size:16px; line-height:34px; }
-}
+/* Fullscreen */
+:fullscreen .top-controls{ position:fixed; } /* siguen visibles */
