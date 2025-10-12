@@ -1,35 +1,33 @@
 /***********************
- * Configuración
+ * Config
  ***********************/
-const AUTO_DETECT = true;   // detectar páginas automáticamente
-const MAX_PAGES   = 300;    // tope de búsqueda
-const TOTAL_PAGES = 10;     // si no detectas auto
+const AUTO_DETECT = true;
+const MAX_PAGES   = 300;
+const TOTAL_PAGES = 10;
 
-/* Patrones de nombre/ext: page-1 / page-01 / page-001 + jpg/jpeg/png/webp */
-const NAME_PATTERNS = n => ([
-  `page-${n}`,
-  `page-${String(n).padStart(2,'0')}`,
-  `page-${String(n).padStart(3,'0')}`,
-]);
+const NAME_PATTERNS = n => ([`page-${n}`, `page-${String(n).padStart(2,'0')}`, `page-${String(n).padStart(3,'0')}`]);
 const EXT  = ['jpg','jpeg','png','webp'];
 const PATH = base => `assets/pdf-images/${base}`;
 
 /***********************
- * Estado / elementos
+ * Estado / refs
  ***********************/
-let pages = [];      // array 0-based con urls o null (una por hoja)
-let idx   = 0;       // índice PAR: 0=(1,2), 2=(3,4)...
+let pages = [];            // urls o null por hoja
+let idx   = 0;             // par visible (0->1-2, 2->3-4, ...)
 let isAnimating = false;
+let drag = null;           // {side:'right'|'left', startX, t}
 
 const viewer = document.getElementById('viewer');
 const book   = document.getElementById('book');
+
 const left   = document.getElementById('page-left');
 const right  = document.getElementById('page-right');
+
 const imgL   = document.getElementById('img-left');
 const imgR   = document.getElementById('img-right');
 
-const hotL   = document.getElementById('hot-left');
-const hotR   = document.getElementById('hot-right');
+const cornerL= document.getElementById('corner-L');
+const cornerR= document.getElementById('corner-R');
 
 const slider = document.getElementById('slider');
 const fill   = document.getElementById('fill');
@@ -43,180 +41,221 @@ const btnFS    = document.getElementById('btn-fs');
 /***********************
  * Utilidades
  ***********************/
-const clampPair = (i, L) => Math.max(0, Math.min(i - (i % 2), Math.max(0, L - 2)));
-const easeInOutCubic = t => t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+const clampPair = (i,L)=>Math.max(0,Math.min(i-(i%2),Math.max(0,L-2)));
+const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
 
-function animateFlip(side, dir, onDone){
+function setARfrom(img){
+  const w=img.naturalWidth||1000, h=img.naturalHeight||1500;
+  const ar=(2*w)/h;
+  book.style.setProperty('--book-ar', ar);
+  const resize=()=>book.style.height=(book.clientWidth/ar)+'px';
+  resize(); addEventListener('resize', resize);
+}
+
+function preload(arr){arr.forEach(s=>{const i=new Image(); i.src=s;});}
+function exists(url){return new Promise(res=>{const i=new Image();i.onload=()=>res({ok:true,i,url});i.onerror=()=>res({ok:false,url});i.src=url+`?v=${Date.now()}`})}
+async function findOne(n){
+  for (const name of NAME_PATTERNS(n))
+    for (const ext of EXT){
+      const u=PATH(`${name}.${ext}`);
+      const r=await exists(u);
+      if(r.ok) return r.url;
+    }
+  return null;
+}
+
+/***********************
+ * Render/UI helpers
+ ***********************/
+function setSheetTransform(side, deg){
+  // deg: 0 (plana) → 180 (completamente girada)
+  const page = side==='right' ? right : left;
+  const sheet = page.querySelector('.sheet');
+  sheet.style.transform = `rotateY(${side==='right' ? -deg : deg}deg)`;
+
+  // sombras dinámicas
+  const fold = page.querySelector('.foldShade');
+  const opp  = page.querySelector('.oppositeShade');
+  const k = Math.sin(Math.min(Math.PI, (deg/180)*Math.PI)); // 0..1..0
+  fold.style.opacity = 0.55 * k;
+  opp.style.opacity  = 0.38 * k;
+
+  // grosor: desplaza ribete hacia el pliegue
+  const edge = page.querySelector('.edge');
+  edge.style.opacity = 0.75 - 0.5*k;
+}
+
+function relax(side, toDeg, ms=520){
+  // animación a 'toDeg' (0 o 180)
   if (isAnimating) return;
   isAnimating = true;
-  const el = side === 'left' ? left : right;
-  const start = performance.now();
-  const D = 520;
+  const page = side==='right'?right:left;
 
+  const sheet = page.querySelector('.sheet');
+  const from = (()=> {
+    const m = sheet.style.transform.match(/rotateY\((-?[\d.]+)deg\)/);
+    if(!m) return 0;
+    const cur = Math.abs(parseFloat(m[1]));
+    return cur;
+  })();
+
+  const start = performance.now();
   function frame(now){
-    const t = Math.min(1, (now - start) / D);
-    const k = easeInOutCubic(t);
-    const ang = (side === 'left' ? 1 : -1) * dir * 15 * k; // giro ~15°
-    el.style.transform = `rotateY(${ang}deg)`;
-    if (t < 1) requestAnimationFrame(frame);
-    else { el.style.transform = 'rotateY(0deg)'; isAnimating = false; onDone && onDone(); }
+    const t = Math.min(1,(now-start)/ms);
+    const d = from + (toDeg-from)*easeInOut(t);
+    setSheetTransform(side, d);
+    if (t<1) requestAnimationFrame(frame);
+    else { isAnimating=false; }
   }
   requestAnimationFrame(frame);
 }
 
-function preload(arr){ arr.forEach(s=>{ const i=new Image(); i.src=s; }); }
-
-function exists(url){
-  return new Promise(res=>{
-    const i = new Image();
-    i.onload  = () => res({ok:true,  i, url});
-    i.onerror = () => res({ok:false, i, url});
-    i.src = url + `?v=${Date.now()}`;
-  });
-}
-
-async function findOne(n){
-  const cands = [];
-  for (const name of NAME_PATTERNS(n))
-    for (const ext of EXT)
-      cands.push(PATH(`${name}.${ext}`));
-
-  for (const u of cands){
-    const r = await exists(u);
-    if (r.ok) return r.url;
-  }
-  return null;
-}
-
-/* Fija aspect-ratio del libro a partir de la 1ª imagen válida */
-function setBookAspectFrom(img){
-  const w = img.naturalWidth || 1000;
-  const h = img.naturalHeight || 1500;
-  const ar = (2 * w) / h;               // libro abierto
-  book.style.setProperty('--book-ar', ar);
-  const resize = () => { book.style.height = (book.clientWidth / ar) + 'px'; };
-  resize(); addEventListener('resize', resize);
-}
-
-/***********************
- * Render & UI
- ***********************/
 function updateUI(){
-  const spreads = Math.ceil(pages.length / 2);
-  slider.max = Math.max(0, spreads - 1);
-  slider.value = Math.floor(idx / 2);
-  const pct = spreads > 1 ? (slider.value / (spreads - 1)) * 100 : 0;
-  fill.style.width = (isFinite(pct) ? pct : 0) + '%';
+  const spreads = Math.ceil(pages.length/2);
+  slider.max = Math.max(0, spreads-1);
+  slider.value = Math.floor(idx/2);
+  const pct = spreads>1 ? (slider.value/(spreads-1))*100 : 0;
+  fill.style.width = (isFinite(pct)?pct:0)+'%';
 
-  const atStart = (idx <= 0);
-  const atEnd   = (idx + 2 >= pages.length);
-  btnPrev.disabled = hotL.disabled = atStart;
-  btnNext.disabled = hotR.disabled = atEnd;
-  btnFirst.disabled = atStart;
-  btnLast.disabled  = atEnd;
+  const atStart = idx<=0;
+  const atEnd   = idx+2>=pages.length;
+  btnPrev.disabled = atStart;
+  btnNext.disabled = atEnd;
+  btnFirst.disabled= atStart;
+  btnLast.disabled = atEnd;
 }
 
 function render(){
-  if (!pages.length){
-    imgL.removeAttribute('src'); imgR.removeAttribute('src');
-    updateUI(); return;
-  }
+  if(!pages.length){ imgL.removeAttribute('src'); imgR.removeAttribute('src'); updateUI(); return; }
   idx = clampPair(idx, pages.length);
+  imgL.src = pages[idx]     || '';
+  imgR.src = pages[idx+1]   || '';
 
-  const L = pages[idx]     || '';
-  const R = pages[idx + 1] || '';
-
-  imgL.src = L;
-  imgR.src = R;
-
+  // reset transforms/ sombras a estado plano
+  setSheetTransform('left',  0);
+  setSheetTransform('right', 0);
   updateUI();
 }
 
 /***********************
- * Navegación
+ * Navegación con giro realista
  ***********************/
-const next = () => { if (!isAnimating && idx + 2 < pages.length) animateFlip('right', -1, () => { idx += 2; render(); }); };
-const prev = () => { if (!isAnimating && idx > 0)                animateFlip('left',   1, () => { idx -= 2; render(); }); };
-const first= () => { if (idx>0){ idx = 0; render(); } };
-const last = () => { const lastPair = clampPair(pages.length-2, pages.length); idx = lastPair; render(); };
+function next(){
+  if (isAnimating || idx+2>=pages.length) return;
+  // gira la derecha 0→180 y luego avanzamos al siguiente par
+  relax('right', 180, 560);
+  setTimeout(()=>{ idx+=2; render(); }, 560);
+}
+function prev(){
+  if (isAnimating || idx<=0) return;
+  // gira la izquierda 0→180 hacia atrás y luego retrocedemos
+  relax('left', 180, 560);
+  setTimeout(()=>{ idx-=2; render(); }, 560);
+}
+function first(){ if(idx>0){ idx=0; render(); } }
+function last(){ const lastPair = clampPair(pages.length-2, pages.length); idx=lastPair; render(); }
+
+/***********************
+ * Drag desde esquina (preview tipo "peel")
+ ***********************/
+function startDrag(side, e){
+  if (isAnimating) return;
+  const rect = book.getBoundingClientRect();
+  drag = {
+    side,
+    startX: e.clientX || (e.touches && e.touches[0].clientX) || 0,
+    rect
+  };
+  // activar una ligera elevación inicial
+  setSheetTransform(side, 10);
+}
+function moveDrag(e){
+  if (!drag) return;
+  const x = (e.clientX || (e.touches && e.touches[0].clientX) || drag.startX);
+  const {rect, side} = drag;
+  const half = rect.width/2;
+  const center = rect.left + half;
+  let t;
+
+  if (side==='right'){
+    // 0 en el centro, 1 en el borde izquierdo (peel completo)
+    t = Math.min(1, Math.max(0, (center - x)/half)); // 0..1
+    setSheetTransform('right', t*180);
+  }else{
+    // izquierda: 0 en centro, 1 en borde derecho
+    t = Math.min(1, Math.max(0, (x - center)/half));
+    setSheetTransform('left', t*180);
+  }
+  drag.t = t;
+}
+function endDrag(){
+  if (!drag) return;
+  const {side, t} = drag;
+  drag = null;
+  if (t>0.5){
+    // completo: termina giro y cambia de spread
+    if (side==='right'){ relax('right', 180, 420); setTimeout(()=>{ idx+=2; render(); }, 420); }
+    else               { relax('left',  180, 420); setTimeout(()=>{ idx-=2; render(); }, 420); }
+  }else{
+    // vuelve plano
+    relax(side, 0, 360);
+  }
+}
 
 /***********************
  * Eventos
  ***********************/
-hotR.addEventListener('click', next);
-hotL.addEventListener('click', prev);
-btnNext.addEventListener('click', next);
-btnPrev.addEventListener('click', prev);
-btnFirst.addEventListener('click', first);
-btnLast.addEventListener('click', last);
+document.getElementById('btn-next').addEventListener('click', next);
+document.getElementById('btn-prev').addEventListener('click', prev);
+document.getElementById('btn-first').addEventListener('click', first);
+document.getElementById('btn-last').addEventListener('click', last);
 
-document.addEventListener('keydown', (e)=>{
-  if (e.key === 'ArrowRight') next();
-  if (e.key === 'ArrowLeft')  prev();
+document.addEventListener('keydown', e=>{
+  if(e.key==='ArrowRight') next();
+  if(e.key==='ArrowLeft')  prev();
 });
 
-let sx = null;
-book.addEventListener('pointerdown', e => sx = e.clientX);
-book.addEventListener('pointerup',   e => {
-  if (sx == null) return; const dx = e.clientX - sx;
-  if (dx < -40) next(); if (dx >  40) prev(); sx = null;
-});
+cornerR.addEventListener('pointerdown', e=>{ startDrag('right', e); });
+cornerL.addEventListener('pointerdown', e=>{ startDrag('left',  e); });
+window.addEventListener('pointermove', moveDrag, {passive:true});
+window.addEventListener('pointerup',   endDrag);
 
-slider.addEventListener('input', () => { idx = parseInt(slider.value,10) * 2; render(); });
+slider.addEventListener('input', ()=>{ idx=parseInt(slider.value,10)*2; render(); });
 
-btnFS.addEventListener('click', () => {
-  const entering = btnFS.dataset.state !== 'exit';
-  const target = viewer; // fullscreen de todo (botones + libro + barra)
-  if (entering){
-    (target.requestFullscreen || document.documentElement.requestFullscreen).call(target);
-  }else{
-    document.exitFullscreen && document.exitFullscreen();
-  }
+btnFS.addEventListener('click', ()=>{
+  const entering = btnFS.dataset.state!=='exit';
+  const t = viewer;
+  if (entering){ (t.requestFullscreen||document.documentElement.requestFullscreen).call(t); }
+  else { document.exitFullscreen && document.exitFullscreen(); }
 });
-document.addEventListener('fullscreenchange', () => {
+document.addEventListener('fullscreenchange', ()=>{
   const fs = !!document.fullscreenElement;
-  btnFS.dataset.state = fs ? 'exit' : 'enter';
-  btnFS.textContent   = fs ? '⤡' : '⤢';
+  btnFS.dataset.state = fs ? 'exit':'enter';
+  btnFS.textContent   = fs ? '⤡'  : '⤢';
 });
 
 /***********************
- * Init (detección con “huecos” preservados)
+ * Init (detección con huecos preservados)
  ***********************/
 (async function init(){
   if (AUTO_DETECT){
-    // construye arreglo 1..N con url o null; detiene tras varios huecos seguidos
-    const map = [];          // 1-based temporal
-    let found = false;
-    let missesTail = 0;
-
-    for (let n=1; n<=MAX_PAGES; n++){
+    const map=[]; let found=false, misses=0;
+    for(let n=1;n<=MAX_PAGES;n++){
       const url = await findOne(n);
-      if (url){
-        map[n] = url;
-        missesTail = 0;
-        if (!found){
-          const r = await exists(url);
-          if (r.ok) setBookAspectFrom(r.i);
-          found = true;
-        }
-      } else {
-        if (found){
-          map[n] = null;     // mantiene el par (1,2), (3,4) aunque falte
-          missesTail++;
-          if (missesTail >= 6) break;
-        }
+      if(url){
+        map[n]=url; misses=0;
+        if(!found){ const r=await exists(url); r.ok && setARfrom(r.i); found=true; }
+      }else if(found){
+        map[n]=null; misses++;
+        if(misses>=6) break;
       }
     }
-
-    // compacta a 0-based hasta el último índice definido
-    let last = 0;
-    for (let i=map.length-1; i>=1; i--) if (map[i] !== undefined){ last = i; break; }
-    pages = [];
-    for (let i=1; i<=last; i++) pages.push(map[i] ?? null);
-  } else {
-    pages = Array.from({length: TOTAL_PAGES}, (_,i)=>`assets/pdf-images/page-${i+1}.jpg`);
+    let last=0; for(let i=map.length-1;i>=1;i--) if(map[i]!==undefined){last=i;break;}
+    pages=[]; for(let i=1;i<=last;i++) pages.push(map[i]??null);
+  }else{
+    pages = Array.from({length:TOTAL_PAGES},(_,i)=>`assets/pdf-images/page-${i+1}.jpg`);
   }
 
-  if (pages.length) preload(pages.slice(0,6));
+  if(pages.length) preload(pages.slice(0,6));
   render();
 })();
