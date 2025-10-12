@@ -7,9 +7,8 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Todo el visor (botones + libro + barra) entra a pantalla completa -->
   <div id="viewer" class="viewer">
-    <!-- Barra superior (siempre arriba-derecha) -->
+    <!-- Botones arriba-derecha -->
     <div class="top-controls" aria-label="Controles">
       <button id="btn-first" class="icon" title="Primera">≪</button>
       <button id="btn-prev"  class="icon" title="Anterior">〈</button>
@@ -19,18 +18,39 @@
       <button id="btn-last"  class="icon" title="Última">≫</button>
     </div>
 
-    <!-- Pila centrada: libro + barra -->
+    <!-- Libro + barra (centrados) -->
     <div class="stack">
       <section id="book" class="book" aria-label="Flipbook">
         <span class="gutter"></span>
-        <div id="page-left"  class="page left"><img id="img-left"  alt=""></div>
-        <div id="page-right" class="page right"><img id="img-right" alt=""></div>
-        <!-- Zonas clicables invisibles -->
-        <button id="hot-left"  class="hot left"  aria-label="Anterior"></button>
-        <button id="hot-right" class="hot right" aria-label="Siguiente"></button>
+
+        <!-- Izquierda -->
+        <div id="page-left" class="page left">
+          <div class="sheet">
+            <img id="img-left" alt="">
+            <div class="edge"></div>
+            <div class="back"></div>
+            <div class="foldShade"></div>
+          </div>
+          <div class="oppositeShade"></div>
+        </div>
+
+        <!-- Derecha -->
+        <div id="page-right" class="page right">
+          <div class="sheet">
+            <img id="img-right" alt="">
+            <div class="edge"></div>
+            <div class="back"></div>
+            <div class="foldShade"></div>
+          </div>
+          <div class="oppositeShade"></div>
+        </div>
+
+        <!-- zonas clicables para arrastrar desde la esquina -->
+        <button id="corner-L" class="corner left"  aria-label="Arrastrar atrás"></button>
+        <button id="corner-R" class="corner right" aria-label="Arrastrar adelante"></button>
       </section>
 
-      <!-- Barra inferior estilo botones -->
+      <!-- Barra inferior tipo botones -->
       <nav class="bar">
         <div class="bar-box">
           <div class="rail">
