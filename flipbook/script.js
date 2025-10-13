@@ -17,7 +17,7 @@ const PATH = base => `assets/pdf-images/${base}`;
 /***********************
  * Estado / refs
  ***********************/
-let pages = [];                 // urls por página real: 1..N
+let pages = [];                 // 1..N (index 0 vacío)
 let isAnimating = false;
 let wheelLockUntil = 0;
 let suppressClick = false;
@@ -49,30 +49,29 @@ const dragRight = document.getElementById('drag-right');
 const START_MODE = (book.dataset.start || 'cover').toLowerCase();     // 'cover' | 'spread'
 const INITIAL_SPREAD = (book.dataset.initialSpread || '2-3').toLowerCase(); // '1-2' | '2-3'
 
-/* Estado de vista: portada o pliego */
-let view = { mode: 'cover', pairLeft: 2 }; // pairLeft: izquierda del pliego cuando mode='spread'
-let pageAR = 2/3; // ancho/alto de UNA página (se calcula)
+/* Estado de vista */
+let view = { mode: 'cover', pairLeft: 2 };
+let pageAR = 2/3; // ancho/alto de UNA página (calculado)
 
 /***********************
  * Util
  ***********************/
 const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const TOTAL = ()=> pages.length - 1; // páginas reales
 
 function setPageARFrom(img){
   const w = img.naturalWidth||1000, h = img.naturalHeight||1500;
   pageAR = w/h;
   document.documentElement.style.setProperty('--page-ar', pageAR);
-  applyBookAR();
-}
-function applyBookAR(){
-  if (view.mode === 'cover'){
-    book.classList.add('single');
-  } else {
-    book.classList.remove('single');
-  }
 }
 
-/* Buscar si existe una imagen page-X con varias variantes */
+function applyBookARClass(){
+  // El libro siempre mantiene AR de spread; en portada solo ocultamos izquierda
+  if (view.mode==='cover') book.classList.add('single');
+  else                     book.classList.remove('single');
+}
+
+/* Detectar existencia */
 function exists(url){return new Promise(res=>{const i=new Image();i.onload=()=>res({ok:true,i,url});i.onerror=()=>res({ok:false,url});i.src=url})}
 async function findOne(n){
   for (const name of NAME_PATTERNS(n))
@@ -109,41 +108,42 @@ async function prepareImage(url){
 }
 const getPreparedURL = url => preparedURL.get(url) || url;
 
-function ensureNextPairReadyForward(){
-  // Desde portada: necesitamos 2 y 3; desde pliego: pairLeft+2 y +3
-  if (view.mode==='cover'){
-    return Promise.all([ prepareImage(pages[2]), prepareImage(pages[3]) ]);
-  } else {
-    const L = view.pairLeft + 2, R = view.pairLeft + 3;
-    return Promise.all([ prepareImage(pages[L]), prepareImage(pages[R]) ]);
-  }
-}
-function ensureNextPairReadyBackward(){
-  // Hacia portada: necesitamos 1; desde pliego: pairLeft-2 y -1
-  if (view.mode==='cover'){
-    return Promise.resolve();
-  } else if (view.pairLeft<=2){
-    return Promise.all([ prepareImage(pages[1]) ]);
-  } else {
-    const L = view.pairLeft - 2, R = view.pairLeft - 1;
-    return Promise.all([ prepareImage(pages[L]), prepareImage(pages[R]) ]);
-  }
-}
-
 /***********************
  * Mapeo de vista -> índices
  ***********************/
-function getCurrentIndices(){
-  if (view.mode === 'cover'){
-    return { left: null, right: 1 };
+function indicesFromView(v){
+  if (v.mode==='cover') return { left:null, right:1 };
+  const L=v.pairLeft, R=L+1, N=TOTAL();
+  return { left: (L<=N?L:null), right: (R<=N?R:null) };
+}
+function nextViewFrom(v){
+  const N=TOTAL();
+  if (v.mode==='cover'){
+    return { mode:'spread', pairLeft:2 };
+  } else {
+    const maxLeft = (N % 2 === 0) ? N-1 : N;
+    const newL = Math.min(v.pairLeft+2, maxLeft);
+    return { mode:'spread', pairLeft:newL };
   }
-  const L = view.pairLeft;
-  const R = L + 1;
-  return { left: (L<=pages.length?L:null), right: (R<=pages.length?R:null) };
+}
+function prevViewFrom(v){
+  if (v.mode==='cover'){ return v; }
+  if (v.pairLeft<=2){ return { mode:'cover' }; }
+  return { mode:'spread', pairLeft:v.pairLeft-2 };
+}
+function canNext(){
+  const N=TOTAL();
+  if (N<=0) return false;
+  if (view.mode==='cover') return N>=2; // abrir a (2,3)
+  const maxLeft = (N % 2 === 0) ? N-1 : N;
+  return view.pairLeft < maxLeft;
+}
+function canPrev(){
+  return !(view.mode==='cover'); // siempre puedes volver a portada
 }
 
 /***********************
- * Render estático
+ * Render helpers
  ***********************/
 function applySrc(img, url, spinner){
   if (!url){
@@ -153,27 +153,42 @@ function applySrc(img, url, spinner){
   const finalURL = getPreparedURL(url);
   img.onload  = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 1; };
   img.onerror = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 0; };
-  img.decoding = 'async';
-  img.loading  = 'eager';
+  img.decoding = 'async'; img.loading='eager';
   img.src = finalURL;
   if (img.complete && img.naturalWidth>0){ spinner.classList.add('hidden'); img.style.opacity=1; }
 }
 
+function paintStaticByIndices(leftIndex, rightIndex){
+  // Portada preview: oculta izquierda
+  if (leftIndex){
+    document.getElementById('page-left').style.display = '';
+    applySrc(imgL, pages[leftIndex], spinL);
+  } else {
+    document.getElementById('page-left').style.display = 'none';
+    spinL.classList.add('hidden'); imgL.removeAttribute('src');
+  }
+  if (rightIndex){
+    applySrc(imgR, pages[rightIndex], spinR);
+  } else {
+    applySrc(imgR, null, spinR);
+  }
+}
+
 function updateUI(){
-  // Slider: en portada lo ponemos en 0; spreads cuentan desde (2,3) => paso 1
-  const spreads = Math.max(0, Math.ceil(Math.max(0, pages.length-1)/2)); // sin portada
+  const N = TOTAL();
+  const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2)); // pliegos desde (2,3)
+
   slider.max = spreads;
   if (view.mode==='cover'){ slider.value = 0; fill.style.width = '0%'; }
   else {
     const step = Math.max(1, Math.floor((view.pairLeft-2)/2)+1);
-    slider.value = step;
-    const pct = spreads>0 ? (step / spreads) * 100 : 0;
+    slider.value = Math.min(spreads, step);
+    const pct = spreads>0 ? (slider.value / spreads) * 100 : 0;
     fill.style.width = (isFinite(pct)?pct:0)+'%';
   }
 
-  // Botones/hints
   const atCover = (view.mode==='cover');
-  const atEnd   = (view.mode==='spread') && (view.pairLeft >= (pages.length%2===0 ? pages.length-1 : pages.length));
+  const atEnd   = (view.mode==='spread') && !canNext();
 
   btnPrev.disabled  = atCover;
   btnFirst.disabled = atCover;
@@ -183,31 +198,14 @@ function updateUI(){
   hintL.disabled = atCover;
   hintR.disabled = atEnd;
 
-  // Drag zones: en portada desactivo izquierda
+  // En portada, desactiva arrastre izquierdo
   dragLeft.style.pointerEvents = atCover ? 'none' : 'auto';
 }
 
 function render(){
-  applyBookAR();
-
-  const {left, right} = getCurrentIndices();
-
-  // izquierda
-  if (left){
-    document.getElementById('page-left').style.display = '';
-    applySrc(imgL, pages[left], spinL);
-  } else {
-    document.getElementById('page-left').style.display = 'none';
-    spinL.classList.add('hidden'); imgL.removeAttribute('src');
-  }
-
-  // derecha (puede quedar vacía si impar al final)
-  if (right){
-    applySrc(imgR, pages[right], spinR);
-  } else {
-    applySrc(imgR, null, spinR);
-  }
-
+  applyBookARClass();
+  const {left,right} = indicesFromView(view);
+  paintStaticByIndices(left, right);
   updateUI();
 }
 
@@ -231,16 +229,14 @@ function makeTurnOverlay(direction){
 
   const shade = document.createElement('div'); shade.className='turnShade';
 
-  // Relleno según estado
+  // Caras en función del estado ACTUAL (antes de cambiar view)
+  const N=TOTAL();
   if (direction==='forward'){
     if (view.mode==='cover'){
-      // Cara: derecha (1). Dorso: nueva izquierda (2).
       fR.src = getPreparedURL(pages[1] || '');
       bL.src = getPreparedURL(pages[2] || '');
-      // ocultamos las otras medias
       fL.style.opacity=0; bR.style.opacity=0;
     } else {
-      // Cara: derecha actual (pairLeft+1). Dorso: nueva izquierda (pairLeft+2).
       const curR = view.pairLeft + 1;
       const nextL= view.pairLeft + 2;
       fR.src = getPreparedURL(pages[curR] || '');
@@ -248,21 +244,18 @@ function makeTurnOverlay(direction){
       fL.style.opacity=0; bR.style.opacity=0;
     }
   } else { // backward
-    if (view.mode==='cover'){
-      // no deberíamos entrar aquí, pero por seguridad:
-      fL.style.opacity=0; fR.style.opacity=0; bL.style.opacity=0; bR.style.opacity=0;
-    } else if (view.pairLeft<=2){
-      // Volviendo a portada: Cara = izquierda actual (2), Dorso = portada (1 en derecha)
+    if (view.mode==='spread' && view.pairLeft<=2){
       fL.src = getPreparedURL(pages[2] || '');
       bR.src = getPreparedURL(pages[1] || '');
       fR.style.opacity=0; bL.style.opacity=0;
-    } else {
-      // Cara: izquierda actual (pairLeft). Dorso: nueva derecha (pairLeft-1)
+    } else if (view.mode==='spread'){
       const curL = view.pairLeft;
       const prevR= view.pairLeft - 1;
       fL.src = getPreparedURL(pages[curL] || '');
       bR.src = getPreparedURL(pages[prevR] || '');
       fR.style.opacity=0; bL.style.opacity=0;
+    } else {
+      // cover hacia atrás no aplica
     }
   }
 
@@ -300,68 +293,64 @@ function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
 }
 
 /***********************
- * Navegación “lógica”
+ * PREVIEW inmediato (fondo cambia al empezar)
  ***********************/
-function canNext(){
-  if (view.mode==='cover') return pages.length >= 2; // al menos hay 2 y 3? abrimos igual, si no, intentamos lo que haya
-  const maxLeft = (pages.length % 2 === 0) ? pages.length - 1 : pages.length;
-  return view.pairLeft < maxLeft;
-}
-function canPrev(){
-  // siempre se puede volver a portada
-  return !(view.mode==='cover');
+function previewStatic(direction){
+  const nextV = direction==='forward' ? nextViewFrom(view) : prevViewFrom(view);
+  const idxs  = indicesFromView(nextV);
+  // Mostrar ya el fondo del destino (izquierda puede “no existir” en portada)
+  if (nextV.mode==='cover') book.classList.add('single'); else book.classList.remove('single');
+  paintStaticByIndices(idxs.left, idxs.right);
+  return nextV; // para commit si se confirma
 }
 
+/***********************
+ * Navegación
+ ***********************/
 function goNext(){
   if (!canNext() || isAnimating) return;
 
-  const gate = ensureNextPairReadyForward();
+  // Prepara recursos de destino
+  const gate = (view.mode==='cover')
+    ? Promise.all([ prepareImage(pages[2]), prepareImage(pages[3]) ])
+    : Promise.all([ prepareImage(pages[view.pairLeft+2]), prepareImage(pages[view.pairLeft+3]) ]);
 
+  // PREVIEW de fondo inmediato
+  const nextV = previewStatic('forward');
+
+  // Anima la hoja actual saliente
   animateTurn('forward', 0, -180, FLIP_MS, gate, ()=>{
-    if (view.mode==='cover'){
-      view.mode='spread'; view.pairLeft = 2;
-    } else {
-      view.pairLeft += 2;
-    }
+    view = nextV; // commit
     render();
   });
 }
-
 function goPrev(){
   if (!canPrev() || isAnimating) return;
 
-  const gate = ensureNextPairReadyBackward();
+  const gate = (view.mode==='spread' && view.pairLeft<=2)
+    ? Promise.all([ prepareImage(pages[1]) ])
+    : (view.mode==='spread'
+        ? Promise.all([ prepareImage(pages[view.pairLeft-2]), prepareImage(pages[view.pairLeft-1]) ])
+        : Promise.resolve());
+
+  const prevV = previewStatic('backward');
 
   animateTurn('backward', 0, 180, FLIP_MS, gate, ()=>{
-    if (view.mode==='spread' && view.pairLeft<=2){
-      view.mode='cover';
-    } else if (view.mode==='spread'){
-      view.pairLeft -= 2;
-    }
+    view = prevV;
     render();
   });
 }
-
 function goFirst(){
   if (isAnimating) return;
-  view.mode = (START_MODE==='cover') ? 'cover' : 'spread';
-  if (view.mode==='spread'){
-    view.pairLeft = (INITIAL_SPREAD==='1-2') ? 1 : 2;
-  }
+  if (START_MODE==='cover'){ view={mode:'cover'}; }
+  else { view={mode:'spread', pairLeft: (INITIAL_SPREAD==='1-2')?1:2}; }
   render();
 }
 function goLast(){
   if (isAnimating) return;
-  if (pages.length===0) return;
-
-  // si impar -> último pliego tiene izquierda = n y derecha vacía
-  if (pages.length % 2 === 1){
-    view.mode='spread';
-    view.pairLeft = pages.length; // mostrará (n, null)
-  } else {
-    view.mode='spread';
-    view.pairLeft = pages.length - 1; // (n-1, n)
-  }
+  const N = TOTAL(); if (N<=0) return;
+  if (N % 2 === 1){ view={mode:'spread', pairLeft:N}; }  // (n, null)
+  else            { view={mode:'spread', pairLeft:N-1}; } // (n-1, n)
   render();
 }
 
@@ -386,26 +375,26 @@ book.addEventListener('click', (e)=>{
   if (e.clientX < centerX) goPrev(); else goNext();
 });
 
-/* Rueda del mouse */
+/* Rueda del mouse con throttle y sin salirse de límites */
 book.addEventListener('wheel', (e)=>{
   e.preventDefault();
   if (isAnimating) return;
   const now = performance.now();
   if (now < wheelLockUntil) return;
+  if (e.deltaY > 0){ if (canNext()) goNext(); }
+  else if (e.deltaY < 0){ if (canPrev()) goPrev(); }
   wheelLockUntil = now + WHEEL_THROTTLE_MS;
-  if (e.deltaY > 0) goNext();
-  else if (e.deltaY < 0) goPrev();
 }, { passive:false });
 
 /***********************
- * Drag por BORDE vertical
+ * Drag por BORDE (vertical completo, estrecho)
  ***********************/
-let drag = null; // {dir, overlay, shade, rect, startX, t, deg, pointerId}
+let drag = null; // {dir, overlay, shade, rect, startX, t, deg, pointerId, preview}
 
 function startDrag(side, e){
   if (isAnimating) return;
-  // Portada: no hay drag izq
-  if (side==='left' && view.mode==='cover') return;
+  if (side==='left' && !canPrev()) return;
+  if (side==='right' && !canNext()) return;
 
   suppressClick = true;
   book.classList.add('dragging');
@@ -413,32 +402,30 @@ function startDrag(side, e){
   const pointerId = e.pointerId;
   const dir = (side==='right') ? 'forward' : 'backward';
 
+  // PREVIEW inmediato del fondo
+  const targetV = previewStatic(dir);
+
   const {turn, shade} = makeTurnOverlay(dir);
-
   const rect = book.getBoundingClientRect();
-  let startX = e.clientX;
+  const startX = e.clientX;
 
-  // Captura puntero para no perder el drag
   e.currentTarget.setPointerCapture && e.currentTarget.setPointerCapture(pointerId);
 
-  // Iniciar con ligera inclinación
   setTurnDeg(turn, shade, dir==='forward' ? -8 : 8);
 
-  drag = { dir, overlay:turn, shade, rect, startX, t:0, deg:0, pointerId };
+  drag = { dir, overlay:turn, shade, rect, startX, t:0, deg:0, pointerId, preview:targetV };
 }
-
 function moveDrag(e){
   if (!drag) return;
   const x = e.clientX;
   const {rect, dir} = drag;
   const center = rect.left + rect.width/2;
 
-  // Progreso solo en X desde el borde hacia el centro
   let t;
-  if (dir==='forward'){ // borde derecho hacia centro
+  if (dir==='forward'){ // borde derecho -> centro
     const from = rect.right; const to = center;
     t = Math.min(1, Math.max(0, (from - x) / (from - to)));
-  } else {              // borde izquierdo hacia centro
+  } else {              // borde izquierdo -> centro
     const from = rect.left; const to = center;
     t = Math.min(1, Math.max(0, (x - from) / (to - from)));
   }
@@ -448,17 +435,22 @@ function moveDrag(e){
   drag.deg = deg;
   setTurnDeg(drag.overlay, drag.shade, deg);
 }
-
 function endDrag(e){
   if (!drag) return;
-  const {dir, t, overlay, shade, deg, pointerId} = drag;
+  const {dir, t, overlay, shade, deg, pointerId, preview} = drag;
   drag = null;
 
-  // Liberar captura y overflow
   try{ e.currentTarget.releasePointerCapture && e.currentTarget.releasePointerCapture(pointerId); }catch{}
-  // completamos o regresamos
+
   if (t>DRAG_COMPLETE_T){
-    const gate = (dir==='forward') ? ensureNextPairReadyForward() : ensureNextPairReadyBackward();
+    const gate = (dir==='forward')
+      ? (view.mode==='cover'
+          ? Promise.all([ prepareImage(pages[2]), prepareImage(pages[3]) ])
+          : Promise.all([ prepareImage(pages[view.pairLeft+2]), prepareImage(pages[view.pairLeft+3]) ]))
+      : (view.mode==='spread' && view.pairLeft<=2
+          ? Promise.all([ prepareImage(pages[1]) ])
+          : Promise.all([ prepareImage(pages[view.pairLeft-2]), prepareImage(pages[view.pairLeft-1]) ]));
+
     const ms = FLIP_MS_DRAG_DONE, from = deg, to = (dir==='forward') ? -180 : 180;
     isAnimating = true;
     const t0 = performance.now();
@@ -470,13 +462,7 @@ function endDrag(e){
       else {
         Promise.resolve(gate).then(()=>{
           overlay.remove(); isAnimating=false;
-          if (dir==='forward'){
-            if (view.mode==='cover'){ view.mode='spread'; view.pairLeft=2; }
-            else { view.pairLeft += 2; }
-          } else {
-            if (view.mode==='spread' && view.pairLeft<=2){ view.mode='cover'; }
-            else if (view.mode==='spread'){ view.pairLeft -= 2; }
-          }
+          view = preview; // commit definitivo del destino
           book.classList.remove('dragging');
           render();
         });
@@ -484,6 +470,7 @@ function endDrag(e){
     }
     requestAnimationFrame(frame);
   } else {
+    // Cancelar → volver a la vista original
     const ms = FLIP_MS_RETURN, from = deg, to = 0;
     isAnimating = true;
     const t0 = performance.now();
@@ -492,7 +479,11 @@ function endDrag(e){
       const d = from + (to-from)*easeInOut(k);
       setTurnDeg(overlay, shade, d);
       if (k<1) requestAnimationFrame(frame);
-      else { overlay.remove(); isAnimating=false; book.classList.remove('dragging'); }
+      else {
+        overlay.remove(); isAnimating=false; book.classList.remove('dragging');
+        // volver a vista original
+        render();
+      }
     }
     requestAnimationFrame(frame);
   }
@@ -500,10 +491,9 @@ function endDrag(e){
   setTimeout(()=>{ suppressClick=false; }, 80);
 }
 
-/* Listeners de drag (borde vertical) */
+/* Listeners drag (borde) */
 for (const el of [dragLeft, dragRight]){
   el.addEventListener('pointerdown', e=>{
-    // define lado según elemento
     const side = (e.currentTarget===dragRight) ? 'right' : 'left';
     startDrag(side, e);
   });
@@ -528,21 +518,21 @@ document.addEventListener('fullscreenchange', ()=>{
 });
 
 /***********************
- * Slider → navega spreads
+ * Slider → navega por pliegos (sin salirse)
  ***********************/
 slider.addEventListener('input', ()=>{
-  const target = parseInt(slider.value,10);
-  if (target === 0){
-    // portada si estamos en modo cover, o saltar a primer spread
-    if (START_MODE==='cover'){
-      view.mode='cover';
-    } else {
-      view.mode='spread';
-      view.pairLeft = (INITIAL_SPREAD==='1-2') ? 1 : 2;
-    }
+  const N = TOTAL();
+  const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2));
+  let target = Math.min(spreads, Math.max(0, parseInt(slider.value,10)));
+
+  if (target===0){
+    // portada o primer spread según flags
+    if (START_MODE==='cover') view={mode:'cover'};
+    else view={mode:'spread', pairLeft:(INITIAL_SPREAD==='1-2')?1:2};
   } else {
-    view.mode='spread';
-    view.pairLeft = 2 + (target-1)*2;
+    view={mode:'spread', pairLeft: 2 + (target-1)*2};
+    const maxLeft = (N % 2 === 0) ? N-1 : N;
+    if (view.pairLeft>maxLeft) view.pairLeft=maxLeft;
   }
   render();
 });
@@ -551,7 +541,6 @@ slider.addEventListener('input', ()=>{
  * Init (detección de assets)
  ***********************/
 (async function init(){
-  // Descubrir páginas reales
   const map=[]; let firstImg=null, found=false, misses=0;
   for(let n=1;n<=MAX_PAGES;n++){
     const r = await findOne(n);
@@ -566,31 +555,24 @@ slider.addEventListener('input', ()=>{
   }
   // última existente (truthy)
   let last=0; for(let i=map.length-1;i>=1;i--) if(map[i]){ last=i; break; }
-  pages = Array.from({length:last+1},(_,i)=>map[i]||null); // indexamos por número real (1..last)
+  pages = Array.from({length:last+1},(_,i)=>map[i]||null); // 0..last; páginas reales 1..last
 
   if (firstImg){ setPageARFrom(firstImg); }
 
   // Estado inicial según flags
   if (START_MODE==='cover'){
-    view.mode='cover'; // portada
+    view={mode:'cover'};
   } else {
-    view.mode='spread';
-    view.pairLeft = (INITIAL_SPREAD==='1-2') ? 1 : 2;
+    view={mode:'spread', pairLeft: (INITIAL_SPREAD==='1-2') ? 1 : 2};
   }
 
-  // Preparar primeras imágenes
-  const seed = [];
-  const {left,right} = getCurrentIndices();
-  if (left)  seed.push(pages[left]);
-  if (right) seed.push(pages[right]);
-  const ahead = [2,3,4,5].map(n=>pages[n]).filter(Boolean);
-  seed.push(...ahead);
-  await Promise.all(seed.map(u=>prepareImage(u)));
+  // Semilla de preparación
+  const seedIdx = [1,2,3,4,5].filter(i => i<=TOTAL());
+  await Promise.all(seedIdx.map(i=>prepareImage(pages[i])));
 
-  // Conectar hints
-  hintL.addEventListener('click', goPrev);
-  hintR.addEventListener('click', goNext);
+  // Flechas guía
+  hintL.addEventListener('click', ()=>{ if (canPrev()) goPrev(); });
+  hintR.addEventListener('click', ()=>{ if (canNext()) goNext(); });
 
-  // Conectar next/prev a teclas ya está arriba
   render();
 })();
