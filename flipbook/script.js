@@ -12,20 +12,17 @@ const PATH = base => `assets/pdf-images/${base}`;
 /***********************
  * Estado / refs
  ***********************/
-let pages = [];            // urls o null por hoja
-let idx   = 0;             // par visible (0->1-2, 2->3-4, ...)
+let pages = [];                 // urls por página (1..N) -> 0..N-1
+let idx   = 0;                  // índice de par visible (0->1-2, 2->3-4, ...)
 let isAnimating = false;
-let drag = null;           // {side:'right'|'left', startX, t}
+
+let drag = null;                // drag overlay { dir, overlay, shade, rect, startX, t, deg }
 
 const viewer = document.getElementById('viewer');
 const book   = document.getElementById('book');
 
-const left   = document.getElementById('page-left');
-const right  = document.getElementById('page-right');
-
 const imgL   = document.getElementById('img-left');
 const imgR   = document.getElementById('img-right');
-
 const spinL  = document.getElementById('spin-left');
 const spinR  = document.getElementById('spin-right');
 
@@ -42,14 +39,14 @@ const btnLast  = document.getElementById('btn-last');
 const btnFS    = document.getElementById('btn-fs');
 
 /***********************
- * Utilidades
+ * Util
  ***********************/
 const clampPair = (i,L)=>Math.max(0,Math.min(i-(i%2),Math.max(0,L-2)));
 const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
 
 function setARfrom(img){
   const w=img.naturalWidth||1000, h=img.naturalHeight||1500;
-  const ar=(2*w)/h;
+  const ar=(2*w)/h;                               // 2 páginas / 1 alto
   book.style.setProperty('--book-ar', ar);
   const resize=()=>book.style.height=(book.clientWidth/ar)+'px';
   resize(); addEventListener('resize', resize);
@@ -68,17 +65,13 @@ async function findOne(n){
 }
 
 /***********************
- * Render base (páginas estáticas + loaders)
+ * Base render (páginas estáticas + loader)
  ***********************/
 function applySrc(img, url, spinner){
   if (!url){
-    img.removeAttribute('src');
-    img.style.opacity = 0;
-    spinner.classList.add('hidden');
-    return;
+    img.removeAttribute('src'); img.style.opacity=0; spinner.classList.add('hidden'); return;
   }
-  spinner.classList.remove('hidden');
-  img.style.opacity = 0;
+  spinner.classList.remove('hidden'); img.style.opacity=0;
   img.onload  = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 1; };
   img.onerror = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 0; };
   img.src = url;
@@ -113,20 +106,12 @@ function render(){
 }
 
 /***********************
- * Hoja overlay (flip único que cruza el libro)
+ * Hoja overlay (flip único)
  ***********************/
-function makeTurnOverlay({dir}) {
-  // dir = 'forward' o 'backward'
-  // Estructura:
-  // <div class="turn">
-  //   <div class="face front">  <img class="half left"> <img class="half right"> </div>
-  //   <div class="face back">   <img class="half left"> <img class="half right"> </div>
-  //   <div class="turnShade"></div>
-  // </div>
+function makeTurnOverlay(dir) {
+  // dir: 'forward' (R->L)  |  'backward' (L->R)
   const turn = document.createElement('div');
   turn.className = 'turn';
-  turn.style.transformOrigin = '50% 50%'; // lomo
-
   const front = document.createElement('div'); front.className='face front';
   const back  = document.createElement('div'); back.className='face back';
   const fL = document.createElement('img'); fL.className='half left';
@@ -134,44 +119,35 @@ function makeTurnOverlay({dir}) {
   const bL = document.createElement('img'); bL.className='half left';
   const bR = document.createElement('img'); bR.className='half right';
   front.append(fL,fR); back.append(bL,bR);
-
   const shade = document.createElement('div'); shade.className='turnShade';
 
-  // Asignamos imágenes
+  // Cara y dorso según dirección
   if (dir==='forward'){
-    // Cara (0°): derecha actual; dorso (180°): próxima izquierda
-    fR.src = pages[idx+1] || '';
-    fL.style.opacity = 0; // transparente (no tapa la izquierda base)
-    bL.src = pages[idx+2] || '';
-    bR.style.opacity = 0;
+    fR.src = pages[idx+1] || '';  fL.style.opacity = 0; // cara: derecha actual
+    bL.src = pages[idx+2] || '';  bR.style.opacity = 0; // dorso: próxima izquierda
   } else {
-    // Cara (0°): izquierda actual; dorso (180°): derecha anterior
-    fL.src = pages[idx]   || '';
-    fR.style.opacity = 0;
-    bR.src = pages[idx-1] || '';
-    bL.style.opacity = 0;
+    fL.src = pages[idx]   || '';  fR.style.opacity = 0; // cara: izquierda actual
+    bR.src = pages[idx-1] || '';  bL.style.opacity = 0; // dorso: derecha anterior
   }
 
   turn.append(front, back, shade);
   book.appendChild(turn);
-  return { turn, shade };
+  return {turn, shade};
 }
 
 function setTurnDeg(turnEl, shadeEl, deg){
-  // deg: 0 → ±180
+  // deg: 0 → ±180 (pivot en el lomo, centro del libro)
   turnEl.style.transform = `rotateY(${deg}deg)`;
   const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
   shadeEl.style.opacity = 0.50 * k;
 }
 
-function animateTurn({dir, onDone}){
+function animateTurn(dir, fromDeg, toDeg, ms, onDone){
   if (isAnimating) return;
   isAnimating = true;
 
-  const {turn, shade} = makeTurnOverlay({dir});
-
-  // Inicia desde 0°: cara visible
-  let from=0, to=(dir==='forward' ? -180 : 180), ms=620;
+  const {turn, shade} = makeTurnOverlay(dir);
+  let from = fromDeg, to = toDeg;
   const t0 = performance.now();
 
   function frame(now){
@@ -180,59 +156,99 @@ function animateTurn({dir, onDone}){
     setTurnDeg(turn, shade, d);
     if(t<1) requestAnimationFrame(frame);
     else{
-      turn.remove();
-      isAnimating = false;
-      onDone && onDone();
+      turn.remove(); isAnimating = false; onDone && onDone();
     }
   }
   requestAnimationFrame(frame);
 }
 
 /***********************
- * Navegación (usa el flip único)
+ * Navegación (click / teclado)
  ***********************/
 function next(){
   if (isAnimating || idx+2>=pages.length) return;
-  // Preload por si acaso
   if (pages[idx+2]) { const i=new Image(); i.src=pages[idx+2]; }
-  animateTurn({dir:'forward', onDone:()=>{ idx+=2; render(); }});
+  animateTurn('forward', 0, -180, 640, ()=>{ idx+=2; render(); });
 }
 function prev(){
   if (isAnimating || idx<=0) return;
   if (pages[idx-1]) { const i=new Image(); i.src=pages[idx-1]; }
-  animateTurn({dir:'backward', onDone:()=>{ idx-=2; render(); }});
+  animateTurn('backward', 0, 180, 640, ()=>{ idx-=2; render(); });
 }
 function first(){ if(!isAnimating && idx>0){ idx=0; render(); } }
 function last(){ if(isAnimating) return; const lastPair = clampPair(pages.length-2, pages.length); idx=lastPair; render(); }
 
 /***********************
- * Drag desde esquina → dispara flip
+ * Drag de esquina (interactivo)
  ***********************/
 function startDrag(side, e){
   if (isAnimating) return;
+  const dir = (side==='right') ? 'forward' : 'backward';
+  const {turn, shade} = makeTurnOverlay(dir);
+
   const rect = book.getBoundingClientRect();
-  drag = {
-    side,
-    startX: e.clientX || (e.touches && e.touches[0].clientX) || 0,
-    rect, t:0
-  };
+  const startX = (e.touches?e.touches[0].clientX:e.clientX) ?? rect.right;
+  drag = { dir, overlay:turn, shade, rect, startX, t:0, deg:0 };
+
+  // pequeña inclinación inicial para feedback
+  setTurnDeg(turn, shade, dir==='forward' ? -8 : 8);
 }
 function moveDrag(e){
   if (!drag) return;
-  const x = (e.clientX || (e.touches && e.touches[0].clientX) || drag.startX);
-  const {rect, side} = drag;
+  const x = (e.touches?e.touches[0].clientX:e.clientX) ?? drag.startX;
+  const {rect, dir} = drag;
   const half = rect.width/2;
   const center = rect.left + half;
+
+  // normalizamos 0..1 según desde qué lado se arrastra
   let t;
-  if (side==='right'){ t = Math.min(1, Math.max(0, (center - x)/half)); }
-  else               { t = Math.min(1, Math.max(0, (x - center)/half)); }
+  if (dir==='forward'){ t = Math.min(1, Math.max(0, (center - x)/half)); }    // R -> L
+  else                { t = Math.min(1, Math.max(0, (x - center)/half)); }    // L -> R
   drag.t = t;
+
+  const deg = (dir==='forward') ? -180*t : 180*t;
+  drag.deg = deg;
+  setTurnDeg(drag.overlay, drag.shade, deg);
 }
 function endDrag(){
   if (!drag) return;
-  const {side, t} = drag; drag=null;
+  const {dir, t, overlay, shade, deg} = drag;
+  drag = null;
+
   if (t>0.45){
-    if (side==='right') next(); else prev();
+    // completa el giro desde el ángulo actual
+    const ms = 380;
+    const from = deg;
+    const to   = (dir==='forward') ? -180 : 180;
+    isAnimating = true;
+    const t0 = performance.now();
+    function frame(now){
+      const k = Math.min(1,(now-t0)/ms);
+      const d = from + (to-from)*easeInOut(k);
+      setTurnDeg(overlay, shade, d);
+      if (k<1) requestAnimationFrame(frame);
+      else {
+        overlay.remove(); isAnimating=false;
+        if (dir==='forward'){ idx+=2; } else { idx-=2; }
+        render();
+      }
+    }
+    requestAnimationFrame(frame);
+  } else {
+    // vuelve a 0°
+    const ms = 260;
+    const from = deg;
+    const to   = 0;
+    isAnimating = true;
+    const t0 = performance.now();
+    function frame(now){
+      const k = Math.min(1,(now-t0)/ms);
+      const d = from + (to-from)*easeInOut(k);
+      setTurnDeg(overlay, shade, d);
+      if (k<1) requestAnimationFrame(frame);
+      else { overlay.remove(); isAnimating=false; }
+    }
+    requestAnimationFrame(frame);
   }
 }
 
@@ -253,6 +269,7 @@ cornerR.addEventListener('pointerdown', e=>{ startDrag('right', e); });
 cornerL.addEventListener('pointerdown', e=>{ startDrag('left',  e); });
 window.addEventListener('pointermove', moveDrag, {passive:true});
 window.addEventListener('pointerup',   endDrag);
+window.addEventListener('pointercancel', endDrag);
 
 slider.addEventListener('input', ()=>{ idx=parseInt(slider.value,10)*2; render(); });
 
