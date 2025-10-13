@@ -1,17 +1,18 @@
 :root{
-  --book-ar: 3/2;
+  /* AR base: el JS seteará --page-ar; el libro usa siempre AR de spread */
+  --page-ar: 2/3;                            /* ancho/alto de UNA página */
+  --book-ar: calc(2 * var(--page-ar));       /* spread = dos páginas lado a lado */
+
   --radius: 16px;
   --shadow: 0 18px 55px rgba(0,0,0,.18);
   --bg: #f5f6f7;
 
-  /* tema claro */
   --tc-bg: rgba(255,255,255,.92);
   --tc-shadow: 0 6px 20px rgba(0,0,0,.12);
   --icon-bg:#fff; --icon-fg:#222; --icon-bd:#d9d9d9;
 
   --rail:#cbcbcb; --fill:#6f6f6f;
 
-  /* spinner */
   --spin-base: rgba(0,0,0,.14);
   --spin-fg:   #6f6f6f;
   --spin-bg:   rgba(255,255,255,.75);
@@ -22,8 +23,10 @@ html,body{height:100%;margin:0;background:var(--bg);font-family:system-ui,-apple
 button{border:0;background:none;padding:0;cursor:pointer}
 
 .viewer{min-height:100vh;display:grid;place-items:center;position:relative}
+
+/* Botonera superior */
 .top-controls{
-  position:fixed; right:16px; top:16px; z-index:20;
+  position:fixed; right:16px; top:16px; z-index:12;
   display:flex; gap:8px; background:var(--tc-bg);
   border-radius:12px; padding:6px 8px; box-shadow:var(--tc-shadow);
   backdrop-filter:blur(6px)
@@ -38,74 +41,77 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 .stack{display:flex;flex-direction:column;align-items:center;gap:28px;width:100%}
 
-/* =========================
-   LIBRO
-   ========================= */
+/* Libro: SIEMPRE usa AR de spread; en portada la izquierda no existe */
 .book{
   position:relative;width:min(96vw,1280px);aspect-ratio:var(--book-ar);
   background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
-  overflow:visible;perspective:2200px; /* overflow visible para que la hoja no “se corte” */
+  overflow:hidden;perspective:2200px
+}
+/* Durante drag, no recortar para que no se corte la hoja */
+.book.dragging{ overflow:visible; }
+
+.gutter{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.08), transparent 12%, transparent 88%, rgba(0,0,0,.08)),
+    radial-gradient(120px 100% at 50% 0, rgba(0,0,0,.14), transparent 60%),
+    radial-gradient(120px 100% at 50% 100%, rgba(0,0,0,.14), transparent 60%);
+  opacity:.33
 }
 
-/* Mitades base (las que NO cambian durante el giro) */
-.base{
-  position:absolute; top:0; bottom:0; width:50%; height:100%; overflow:hidden;
-  transform-style:preserve-3d; z-index:2;
+/* Mitades estáticas */
+.page{
+  position:absolute; top:0; bottom:0; width:50%; height:100%;
+  z-index:2; transform-style:preserve-3d;
 }
-.half.left  {left:0;  transform-origin:right center}
-.half.right {right:0; transform-origin:left  center}
-.base img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#fff}
+.page.turning{ z-index:7 }
+.page.left  { left:0;  right:auto; transform-origin:right center }
+.page.right { right:0; left:auto;  transform-origin:left  center }
 
-/* Portada: oculta completamente la mitad izquierda */
-.book.cover .half.left{display:none}
+/* En portada, la izquierda no existe; la derecha sigue ocupando su mitad derecha */
+.book.single .page.left{ display:none; }
 
-/* Sombra dinámica sobre la mitad de destino (se modula desde JS) */
-.destShade{
-  position:absolute; inset:0; pointer-events:none; opacity:0;
-  background: radial-gradient(70% 150% at 50% 50%, rgba(0,0,0,.16), transparent 60%);
+.sheet{ position:absolute; inset:0; width:100%; height:100%;
+  backface-visibility:hidden; transform-style:preserve-3d; will-change:transform }
+.sheet img{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#fff; opacity:0; transition:opacity .18s ease }
+.sheet .back{ content:""; position:absolute; inset:0; background:#fff; transform:rotateY(180deg); backface-visibility:hidden }
+.sheet .edge{ position:absolute; top:0; bottom:0; width:3px; left:auto; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd); transform:translateZ(0.5px) }
+.page.left .sheet .edge{ left:0; right:auto }
+.sheet .foldShade{ position:absolute; inset:0; pointer-events:none; opacity:0; background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
+.page.left .sheet .foldShade{ background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
+.oppositeShade{ position:absolute; inset:0; pointer-events:none; opacity:0;
+  background:radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.25), transparent 60%) }
+
+/* Franja de ARRASTRE por BORDE (vertical completa, más estrecha ~9%) */
+.drag-zone{
+  position:absolute; top:0; height:100%; width:9%;
+  z-index:8; opacity:0; cursor:ew-resize; touch-action:none;
 }
+.drag-zone.left  { left:0;  }
+.drag-zone.right { right:0; }
 
-/* Zonas de esquina para drag (media altura, toda la altura visualmente “útil”) */
-.corner{position:absolute;z-index:8;width:20%;height:50%;opacity:0}
-.corner.left  {left:0;  bottom:0; transform:translate(-4%,0)}
-.corner.right {right:0; bottom:0; transform:translate( 4%,0)}
-
-/* Hints minimalistas */
-.hint{
-  position:absolute; bottom:12px; z-index:6; font-size:22px; line-height:1;
-  color:#777; background:#fff; padding:6px 10px; border-radius:12px;
-  box-shadow:0 6px 16px rgba(0,0,0,.12); user-select:none
-}
-.hint-left{ left:-52px }
-.hint-right{ right:-52px }
-
-/* Loader por mitad */
+/* Loader por página */
 .spinner{
-  position:absolute; z-index:6; top:50%; left:25%; transform:translate(-50%,-50%);
+  position:absolute; z-index:6; top:50%; left:50%; transform:translate(-50%,-50%);
   width:46px; height:46px; border-radius:50%;
   border:3px solid var(--spin-base); border-top-color:var(--spin-fg);
   animation: spin .9s linear infinite; box-shadow: 0 2px 8px rgba(0,0,0,.12);
   background: radial-gradient(closest-side, var(--spin-bg), rgba(255,255,255,0) 70%);
   transition: opacity .18s ease, transform .18s ease;
 }
-#spin-right{ left:75% }
 .spinner.hidden{ opacity:0; transform:translate(-50%,-50%) scale(.9); pointer-events:none }
 @keyframes spin { to { transform:translate(-50%,-50%) rotate(360deg) } }
 
-/* Barra inferior – bajada para que no interfiera con la animación */
-.bar{width:100%;display:flex;justify-content:center;margin-top:8px}
-.bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);
-  padding:10px 12px; display:flex; flex-direction:column; gap:10px}
-.rail{ position:relative;width:min(96vw,1280px);height:16px;border-radius:999px;background:var(--rail);
-  box-shadow:inset 0 2px 5px rgba(0,0,0,.08); margin-bottom:10px }
+/* Barra inferior (más baja para no interferir con el overlay) */
+.bar{width:100%;display:flex;justify-content:center; margin-top:-4px; }
+.bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:12px 12px 14px}
+.rail{ position:relative;width:min(96vw,1280px);height:18px;border-radius:999px;background:var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08) }
 .fill{ position:absolute;left:2px;top:2px;bottom:2px;width:0%;background:var(--fill);border-radius:999px;transition:width .12s linear }
 .slider{ position:absolute;inset:0;width:100%;height:100%;appearance:none;background:transparent;outline:none;cursor:pointer }
 .slider::-webkit-slider-thumb{appearance:none;width:0;height:0}
 .slider::-moz-range-thumb{width:0;height:0;border:0}
-.bottom-controls{display:flex; gap:8px; align-self:flex-end}
-.pill{ background:#fff; color:#222; border:1px solid #d9d9d9; padding:6px 10px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.08) }
 
-/* Fullscreen tema oscuro */
+/* Fullscreen oscuro */
 :fullscreen .viewer{
   --tc-bg: rgba(20,20,20,.88); --tc-shadow: 0 10px 30px rgba(0,0,0,.35);
   --icon-bg:#111; --icon-fg:#fff; --icon-bd:#0000;
@@ -114,16 +120,15 @@ button{border:0;background:none;padding:0;cursor:pointer}
   background:#000;
 }
 
-/* =========================
-   HOJA OVERLAY (la que gira)
-   ========================= */
+/* ============ HOJA OVERLAY (flip único) ============ */
 .turn{
-  position:absolute; inset:-2% -2%; z-index:9; pointer-events:none;
-  transform-style:preserve-3d; will-change:transform;
-  filter: drop-shadow(0 20px 28px rgba(0,0,0,.20)); /* sombra de “hoja levantada” */
+  /* ampliamos el canvas del overlay para que no se "corte" en bordes */
+  position:absolute; inset:-24px; z-index:9; pointer-events:none;
+  transform-style:preserve-3d;
 }
 .turn .face{
-  position:absolute; inset:0; backface-visibility:hidden;
+  position:absolute; inset:24px; /* compensa el inset del .turn */
+  backface-visibility:hidden;
   display:grid; grid-template-columns:1fr 1fr;
 }
 .turn .back{ transform:rotateY(180deg) }
@@ -131,12 +136,25 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .turn .half.left{ grid-column:1 }
 .turn .half.right{ grid-column:2 }
 
-/* Sombra móvil del pliegue – más ancha y suave */
+/* ⭐ Sombra del pliegue SOLO sobre la hoja que gira (media anchura) */
 .turn .turnShade{
-  position:absolute; top:0; bottom:0; width:50%; pointer-events:none; opacity:0;
+  position:absolute; top:24px; bottom:24px; width:50%;
+  left:calc(50% + 24px); /* por defecto mitad derecha (R→L) */
+  pointer-events:none; opacity:0;
   background:
-    radial-gradient(60% 140% at 50% 50%, rgba(0,0,0,.22), transparent 60%),
-    linear-gradient(90deg, rgba(0,0,0,.40), rgba(0,0,0,0) 38%);
+    radial-gradient(60% 140% at 50% 50%, rgba(0,0,0,.20), transparent 60%),
+    linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
 }
-.turn.forward .turnShade{ left:50% }            /* R → L */
-.turn.backward .turnShade{ left:0; transform:scaleX(-1) } /* L → R */
+.turn.backward .turnShade{ left:24px; transform:scaleX(-1); } /* L→R */
+
+/* Flechas de guía (alineadas con la anchura de libro/barra) */
+.edge-hint{
+  position:fixed; bottom:62px; z-index:11; /* 62px para que "vivan" con la barra */
+  width:44px; height:44px; border-radius:999px;
+  background:var(--tc-bg); color:#111; box-shadow:var(--tc-shadow);
+  display:grid; place-items:center; font-size:26px; line-height:1;
+  border:1px solid rgba(0,0,0,.06);
+}
+.edge-hint.left  { left:  max(8px, calc(50vw - min(96vw, 1280px)/2)); }
+.edge-hint.right { right: max(8px, calc(50vw - min(96vw, 1280px)/2)); }
+.edge-hint:hover { transform:translateY(-1px) }

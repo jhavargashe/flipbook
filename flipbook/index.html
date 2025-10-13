@@ -8,57 +8,70 @@
 </head>
 <body>
   <div id="viewer" class="viewer">
-    <!-- Botonera superior -->
+    <!-- Botonera superior (derecha) -->
     <div class="top-controls" aria-label="Controles">
-      <button id="btn-first" class="icon" title="Primera">⟪</button>
-      <button id="btn-prev"  class="icon" title="Anterior">⟨</button>
-      <button id="btn-grid"  class="icon" title="Vista mosaico">▦</button>
+      <button id="btn-first" class="icon" title="Primera">≪</button>
+      <button id="btn-prev"  class="icon" title="Atrás">〈</button>
       <button id="btn-fs"    class="icon" title="Pantalla completa" data-state="enter">⤢</button>
-      <button id="btn-next"  class="icon" title="Siguiente">⟩</button>
-      <button id="btn-last"  class="icon" title="Última">⟫</button>
+      <button id="btn-next"  class="icon" title="Adelante">〉</button>
+      <button id="btn-last"  class="icon" title="Última">≫</button>
     </div>
 
-    <!-- Libro + barra -->
+    <!-- Libro + barra (centrados) -->
     <div class="stack">
-      <!-- data-start: "cover" o "spread" -->
-      <section id="book" class="book" aria-label="Flipbook" data-start="cover">
-        <!-- capa base: vista actual/destino que NO cambia durante el giro -->
-        <div id="base-left"  class="base half left">
-          <img id="base-img-left"  alt="">
-          <div class="destShade" id="destShade-left"></div>
+      <!-- Ajusta aquí el modo de inicio -->
+      <!-- data-start="cover" | "spread"  +  data-initial-spread="1-2"|"2-3" -->
+      <section id="book" class="book"
+        data-start="cover"
+        data-initial-spread="2-3"
+        aria-label="Flipbook">
+
+        <!-- Si no quieres viñeta estática, ocúltala con .gutter{display:none} -->
+        <span class="gutter"></span>
+
+        <!-- IZQUIERDA (estática) -->
+        <div id="page-left" class="page left">
+          <div class="sheet">
+            <img id="img-left" alt="">
+            <div class="edge"></div>
+            <div class="back"></div>
+            <div class="foldShade"></div>
+          </div>
+          <div class="oppositeShade"></div>
+          <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
-        <div id="base-right" class="base half right">
-          <img id="base-img-right" alt="">
-          <div class="destShade" id="destShade-right"></div>
+
+        <!-- DERECHA (estática) -->
+        <div id="page-right" class="page right">
+          <div class="sheet">
+            <img id="img-right" alt="">
+            <div class="edge"></div>
+            <div class="back"></div>
+            <div class="foldShade"></div>
+          </div>
+          <div class="oppositeShade"></div>
+          <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- loader por mitad -->
-        <div id="spin-left"  class="spinner" aria-hidden="true"></div>
-        <div id="spin-right" class="spinner" aria-hidden="true"></div>
-
-        <!-- zonas de esquina para drag -->
-        <button id="corner-L" class="corner left"  aria-label="Arrastrar atrás"></button>
-        <button id="corner-R" class="corner right" aria-label="Arrastrar adelante"></button>
-
-        <!-- hints de navegación (minimal) -->
-        <div class="hint hint-left"  aria-hidden="true">⟵</div>
-        <div class="hint hint-right" aria-hidden="true">⟶</div>
+        <!-- Franja de ARRASTRE por BORDE (vertical completa, reducida) -->
+        <div id="drag-left"  class="drag-zone left"  aria-label="Arrastrar atrás"></div>
+        <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
       </section>
 
-      <!-- Barra inferior -->
+      <!-- Barra inferior (más baja para no interferir) -->
       <nav class="bar">
         <div class="bar-box">
           <div class="rail">
             <div class="fill" id="fill"></div>
             <input id="slider" class="slider" type="range" min="0" value="0" step="1" />
           </div>
-          <div class="bottom-controls">
-            <button id="b-prev" class="pill" title="Anterior">⟨</button>
-            <button id="b-next" class="pill" title="Siguiente">⟩</button>
-          </div>
         </div>
       </nav>
     </div>
+
+    <!-- Flechas-guía laterales (alineadas con la barra/ancho del libro) -->
+    <button id="edge-left"  class="edge-hint left"  title="Atrás">❮</button>
+    <button id="edge-right" class="edge-hint right" title="Adelante">❯</button>
   </div>
 
   <script src="script.js" defer></script>
