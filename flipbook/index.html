@@ -8,7 +8,7 @@
 </head>
 <body>
   <div id="viewer" class="viewer">
-    <!-- Botones arriba-derecha -->
+    <!-- Botonera superior (derecha) -->
     <div class="top-controls" aria-label="Controles">
       <button id="btn-first" class="icon" title="Primera">≪</button>
       <button id="btn-prev"  class="icon" title="Anterior">〈</button>
@@ -23,7 +23,7 @@
       <section id="book" class="book" aria-label="Flipbook">
         <span class="gutter"></span>
 
-        <!-- Izquierda -->
+        <!-- Izquierda (estática) -->
         <div id="page-left" class="page left">
           <div class="sheet">
             <img id="img-left" alt="">
@@ -32,11 +32,10 @@
             <div class="foldShade"></div>
           </div>
           <div class="oppositeShade"></div>
-          <!-- 🔄 Loader por página -->
           <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Derecha -->
+        <!-- Derecha (estática) -->
         <div id="page-right" class="page right">
           <div class="sheet">
             <img id="img-right" alt="">
@@ -45,16 +44,15 @@
             <div class="foldShade"></div>
           </div>
           <div class="oppositeShade"></div>
-          <!-- 🔄 Loader por página -->
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- zonas clicables para arrastrar desde la esquina -->
+        <!-- Zonas de esquina para drag -->
         <button id="corner-L" class="corner left"  aria-label="Arrastrar atrás"></button>
         <button id="corner-R" class="corner right" aria-label="Arrastrar adelante"></button>
       </section>
 
-      <!-- Barra inferior tipo botones -->
+      <!-- Barra inferior -->
       <nav class="bar">
         <div class="bar-box">
           <div class="rail">
