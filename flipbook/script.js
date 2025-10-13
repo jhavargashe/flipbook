@@ -45,6 +45,9 @@ const hintR = document.getElementById('edge-right');
 const dragLeft  = document.getElementById('drag-left');
 const dragRight = document.getElementById('drag-right');
 
+const destShadeL = document.getElementById('dest-shade-left');
+const destShadeR = document.getElementById('dest-shade-right');
+
 /* Modo de inicio (portada/pliego) */
 const START_MODE = (book.dataset.start || 'cover').toLowerCase();     // 'cover' | 'spread'
 const INITIAL_SPREAD = (book.dataset.initialSpread || '2-3').toLowerCase(); // '1-2' | '2-3'
@@ -57,16 +60,15 @@ let pageAR = 2/3; // ancho/alto de UNA página (calculado)
  * Util
  ***********************/
 const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
-const TOTAL = ()=> pages.length - 1; // páginas reales
+const TOTAL = ()=> pages.length - 1; // páginas reales (1..N)
 
 function setPageARFrom(img){
   const w = img.naturalWidth||1000, h = img.naturalHeight||1500;
   pageAR = w/h;
   document.documentElement.style.setProperty('--page-ar', pageAR);
 }
-
 function applyBookARClass(){
-  // El libro siempre mantiene AR de spread; en portada solo ocultamos izquierda
+  // El libro SIEMPRE mantiene el AR de spread; en portada ocultamos izquierda
   if (view.mode==='cover') book.classList.add('single');
   else                     book.classList.remove('single');
 }
@@ -116,30 +118,15 @@ function indicesFromView(v){
   const L=v.pairLeft, R=L+1, N=TOTAL();
   return { left: (L<=N?L:null), right: (R<=N?R:null) };
 }
-function nextViewFrom(v){
-  const N=TOTAL();
-  if (v.mode==='cover'){
-    return { mode:'spread', pairLeft:2 };
-  } else {
-    const maxLeft = (N % 2 === 0) ? N-1 : N;
-    const newL = Math.min(v.pairLeft+2, maxLeft);
-    return { mode:'spread', pairLeft:newL };
-  }
-}
-function prevViewFrom(v){
-  if (v.mode==='cover'){ return v; }
-  if (v.pairLeft<=2){ return { mode:'cover' }; }
-  return { mode:'spread', pairLeft:v.pairLeft-2 };
-}
 function canNext(){
   const N=TOTAL();
   if (N<=0) return false;
-  if (view.mode==='cover') return N>=2; // abrir a (2,3)
+  if (view.mode==='cover') return N>=2; // abrir a (2,3) si existe
   const maxLeft = (N % 2 === 0) ? N-1 : N;
   return view.pairLeft < maxLeft;
 }
 function canPrev(){
-  return !(view.mode==='cover'); // siempre puedes volver a portada
+  return !(view.mode==='cover');
 }
 
 /***********************
@@ -159,7 +146,7 @@ function applySrc(img, url, spinner){
 }
 
 function paintStaticByIndices(leftIndex, rightIndex){
-  // Portada preview: oculta izquierda
+  // Portada: izquierda NO existe
   if (leftIndex){
     document.getElementById('page-left').style.display = '';
     applySrc(imgL, pages[leftIndex], spinL);
@@ -198,8 +185,24 @@ function updateUI(){
   hintL.disabled = atCover;
   hintR.disabled = atEnd;
 
-  // En portada, desactiva arrastre izquierdo
   dragLeft.style.pointerEvents = atCover ? 'none' : 'auto';
+}
+
+/* Sombra de destino (left/right) con perfil sinusoidal (pico en 0.5) */
+function setDestShade(direction, progress /*0..1*/){
+  const k = Math.sin(progress * Math.PI); // 0 → 1 → 0
+  const op = 0.26 * k;
+  if (direction==='forward'){ // R→L, destino = izquierda
+    destShadeL.style.opacity = op;
+    destShadeR.style.opacity = 0;
+  } else {                    // L→R, destino = derecha
+    destShadeR.style.opacity = op;
+    destShadeL.style.opacity = 0;
+  }
+}
+function clearDestShades(){
+  destShadeL.style.opacity = 0;
+  destShadeR.style.opacity = 0;
 }
 
 function render(){
@@ -229,7 +232,7 @@ function makeTurnOverlay(direction){
 
   const shade = document.createElement('div'); shade.className='turnShade';
 
-  // Caras en función del estado ACTUAL (antes de cambiar view)
+  // Caras en función del estado ACTUAL (el fondo no cambia hasta el commit)
   const N=TOTAL();
   if (direction==='forward'){
     if (view.mode==='cover'){
@@ -254,8 +257,6 @@ function makeTurnOverlay(direction){
       fL.src = getPreparedURL(pages[curL] || '');
       bR.src = getPreparedURL(pages[prevR] || '');
       fR.style.opacity=0; bL.style.opacity=0;
-    } else {
-      // cover hacia atrás no aplica
     }
   }
 
@@ -264,16 +265,19 @@ function makeTurnOverlay(direction){
   return {turn, shade};
 }
 
-function setTurnDeg(turnEl, shadeEl, deg){
+function setTurnDeg(turnEl, shadeEl, deg, t /*0..1*/, direction){
   turnEl.style.transform = `rotateY(${deg}deg)`;
   const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
-  shadeEl.style.opacity = 0.50 * k;
+  shadeEl.style.opacity = 0.50 * k; // sombra en la hoja que gira
+  // sombreado de destino:
+  setDestShade(direction, t);
 }
 
 function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
   if (isAnimating) return;
   isAnimating = true;
   book.classList.remove('dragging');
+  clearDestShades(); // reset
 
   const {turn, shade} = makeTurnOverlay(direction);
   const t0 = performance.now();
@@ -281,11 +285,12 @@ function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
   function frame(now){
     const t = Math.min(1,(now-t0)/ms);
     const d = fromDeg + (toDeg-fromDeg)*easeInOut(t);
-    setTurnDeg(turn, shade, d);
+    setTurnDeg(turn, shade, d, t, direction);
     if(t<1) requestAnimationFrame(frame);
     else{
       Promise.resolve(gatePromise).then(()=>{
-        turn.remove(); isAnimating = false; onDone && onDone();
+        turn.remove(); clearDestShades();
+        isAnimating = false; onDone && onDone();
       });
     }
   }
@@ -293,34 +298,20 @@ function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
 }
 
 /***********************
- * PREVIEW inmediato (fondo cambia al empezar)
- ***********************/
-function previewStatic(direction){
-  const nextV = direction==='forward' ? nextViewFrom(view) : prevViewFrom(view);
-  const idxs  = indicesFromView(nextV);
-  // Mostrar ya el fondo del destino (izquierda puede “no existir” en portada)
-  if (nextV.mode==='cover') book.classList.add('single'); else book.classList.remove('single');
-  paintStaticByIndices(idxs.left, idxs.right);
-  return nextV; // para commit si se confirma
-}
-
-/***********************
- * Navegación
+ * Navegación (click/teclas/rueda)
  ***********************/
 function goNext(){
   if (!canNext() || isAnimating) return;
 
-  // Prepara recursos de destino
+  // Prepara recursos de destino (sin tocar el fondo)
   const gate = (view.mode==='cover')
     ? Promise.all([ prepareImage(pages[2]), prepareImage(pages[3]) ])
     : Promise.all([ prepareImage(pages[view.pairLeft+2]), prepareImage(pages[view.pairLeft+3]) ]);
 
-  // PREVIEW de fondo inmediato
-  const nextV = previewStatic('forward');
-
-  // Anima la hoja actual saliente
   animateTurn('forward', 0, -180, FLIP_MS, gate, ()=>{
-    view = nextV; // commit
+    // Commit de estado
+    if (view.mode==='cover'){ view={mode:'spread', pairLeft:2}; }
+    else { view={mode:'spread', pairLeft:view.pairLeft+2}; }
     render();
   });
 }
@@ -329,21 +320,18 @@ function goPrev(){
 
   const gate = (view.mode==='spread' && view.pairLeft<=2)
     ? Promise.all([ prepareImage(pages[1]) ])
-    : (view.mode==='spread'
-        ? Promise.all([ prepareImage(pages[view.pairLeft-2]), prepareImage(pages[view.pairLeft-1]) ])
-        : Promise.resolve());
-
-  const prevV = previewStatic('backward');
+    : Promise.all([ prepareImage(pages[view.pairLeft-2]), prepareImage(pages[view.pairLeft-1]) ]);
 
   animateTurn('backward', 0, 180, FLIP_MS, gate, ()=>{
-    view = prevV;
+    if (view.mode==='spread' && view.pairLeft<=2){ view={mode:'cover'}; }
+    else { view={mode:'spread', pairLeft:view.pairLeft-2}; }
     render();
   });
 }
 function goFirst(){
   if (isAnimating) return;
   if (START_MODE==='cover'){ view={mode:'cover'}; }
-  else { view={mode:'spread', pairLeft: (INITIAL_SPREAD==='1-2')?1:2}; }
+  else { view={mode:'spread', pairLeft:(INITIAL_SPREAD==='1-2')?1:2}; }
   render();
 }
 function goLast(){
@@ -387,9 +375,9 @@ book.addEventListener('wheel', (e)=>{
 }, { passive:false });
 
 /***********************
- * Drag por BORDE (vertical completo, estrecho)
+ * Drag por BORDE (vertical, estrecho)
  ***********************/
-let drag = null; // {dir, overlay, shade, rect, startX, t, deg, pointerId, preview}
+let drag = null; // {dir, overlay, shade, rect, startX, t, deg, pointerId}
 
 function startDrag(side, e){
   if (isAnimating) return;
@@ -402,18 +390,16 @@ function startDrag(side, e){
   const pointerId = e.pointerId;
   const dir = (side==='right') ? 'forward' : 'backward';
 
-  // PREVIEW inmediato del fondo
-  const targetV = previewStatic(dir);
-
   const {turn, shade} = makeTurnOverlay(dir);
   const rect = book.getBoundingClientRect();
   const startX = e.clientX;
 
   e.currentTarget.setPointerCapture && e.currentTarget.setPointerCapture(pointerId);
 
-  setTurnDeg(turn, shade, dir==='forward' ? -8 : 8);
+  // inicio con ligera inclinación
+  setTurnDeg(turn, shade, dir==='forward' ? -8 : 8, 0, dir);
 
-  drag = { dir, overlay:turn, shade, rect, startX, t:0, deg:0, pointerId, preview:targetV };
+  drag = { dir, overlay:turn, shade, rect, startX, t:0, deg:0, pointerId };
 }
 function moveDrag(e){
   if (!drag) return;
@@ -433,11 +419,11 @@ function moveDrag(e){
 
   const deg = (dir==='forward') ? -180*t : 180*t;
   drag.deg = deg;
-  setTurnDeg(drag.overlay, drag.shade, deg);
+  setTurnDeg(drag.overlay, drag.shade, deg, t, dir);
 }
 function endDrag(e){
   if (!drag) return;
-  const {dir, t, overlay, shade, deg, pointerId, preview} = drag;
+  const {dir, t, overlay, shade, deg, pointerId} = drag;
   drag = null;
 
   try{ e.currentTarget.releasePointerCapture && e.currentTarget.releasePointerCapture(pointerId); }catch{}
@@ -456,13 +442,21 @@ function endDrag(e){
     const t0 = performance.now();
     function frame(now){
       const k = Math.min(1,(now-t0)/ms);
-      const d = from + (to-from)*easeInOut(k);
-      setTurnDeg(overlay, shade, d);
+      const tt = easeInOut(k);
+      const d = from + (to-from)*tt;
+      setTurnDeg(overlay, shade, d, tt, dir);
       if (k<1) requestAnimationFrame(frame);
       else {
         Promise.resolve(gate).then(()=>{
-          overlay.remove(); isAnimating=false;
-          view = preview; // commit definitivo del destino
+          overlay.remove(); clearDestShades(); isAnimating=false;
+          // Commit definitivo
+          if (dir==='forward'){
+            if (view.mode==='cover'){ view={mode:'spread', pairLeft:2}; }
+            else { view={mode:'spread', pairLeft:view.pairLeft+2}; }
+          } else {
+            if (view.mode==='spread' && view.pairLeft<=2){ view={mode:'cover'}; }
+            else { view={mode:'spread', pairLeft:view.pairLeft-2}; }
+          }
           book.classList.remove('dragging');
           render();
         });
@@ -470,19 +464,19 @@ function endDrag(e){
     }
     requestAnimationFrame(frame);
   } else {
-    // Cancelar → volver a la vista original
+    // Cancelar: regresar a 0°
     const ms = FLIP_MS_RETURN, from = deg, to = 0;
     isAnimating = true;
     const t0 = performance.now();
     function frame(now){
       const k = Math.min(1,(now-t0)/ms);
-      const d = from + (to-from)*easeInOut(k);
-      setTurnDeg(overlay, shade, d);
+      const tt = easeInOut(k);
+      const d = from + (to-from)*tt;
+      setTurnDeg(overlay, shade, d, 1-tt, dir); // opaca menos al volver
       if (k<1) requestAnimationFrame(frame);
       else {
-        overlay.remove(); isAnimating=false; book.classList.remove('dragging');
-        // volver a vista original
-        render();
+        overlay.remove(); clearDestShades(); isAnimating=false; book.classList.remove('dragging');
+        render(); // fondo nunca cambió, sólo re-pintamos por seguridad
       }
     }
     requestAnimationFrame(frame);
@@ -526,13 +520,12 @@ slider.addEventListener('input', ()=>{
   let target = Math.min(spreads, Math.max(0, parseInt(slider.value,10)));
 
   if (target===0){
-    // portada o primer spread según flags
     if (START_MODE==='cover') view={mode:'cover'};
     else view={mode:'spread', pairLeft:(INITIAL_SPREAD==='1-2')?1:2};
   } else {
-    view={mode:'spread', pairLeft: 2 + (target-1)*2};
+    const newLeft = 2 + (target-1)*2;
     const maxLeft = (N % 2 === 0) ? N-1 : N;
-    if (view.pairLeft>maxLeft) view.pairLeft=maxLeft;
+    view={mode:'spread', pairLeft: Math.min(newLeft, maxLeft)};
   }
   render();
 });
@@ -555,7 +548,7 @@ slider.addEventListener('input', ()=>{
   }
   // última existente (truthy)
   let last=0; for(let i=map.length-1;i>=1;i--) if(map[i]){ last=i; break; }
-  pages = Array.from({length:last+1},(_,i)=>map[i]||null); // 0..last; páginas reales 1..last
+  pages = Array.from({length:last+1},(_,i)=>map[i]||null); // 0..last; reales 1..last
 
   if (firstImg){ setPageARFrom(firstImg); }
 
