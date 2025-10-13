@@ -21,7 +21,7 @@
     <!-- Libro + barra (centrados) -->
     <div class="stack">
       <section id="book" class="book" aria-label="Flipbook">
-        <!-- si quieres ocultar esta viñeta estática: quítala o pon .gutter{display:none} -->
+        <!-- Si no quieres viñeta estática: ocúltala con .gutter{display:none} en CSS -->
         <span class="gutter"></span>
 
         <!-- Izquierda (estática) -->
@@ -48,7 +48,7 @@
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Zonas de esquina para drag -->
+        <!-- Zonas de esquina para drag (opcional) -->
         <button id="corner-L" class="corner left"  aria-label="Arrastrar atrás"></button>
         <button id="corner-R" class="corner right" aria-label="Arrastrar adelante"></button>
       </section>
@@ -63,6 +63,10 @@
         </div>
       </nav>
     </div>
+
+    <!-- Flechas-guía laterales (fuera del libro, parte inferior) -->
+    <button id="edge-left"  class="edge-hint left"  title="Atrás">‹</button>
+    <button id="edge-right" class="edge-hint right" title="Adelante">›</button>
   </div>
 
   <script src="script.js" defer></script>
