@@ -1,17 +1,15 @@
 :root{
-  --book-ar: 3/2;                 /* se recalcula por JS */
+  --book-ar: 3/2;
   --radius: 16px;
   --shadow: 0 18px 55px rgba(0,0,0,.18);
   --bg: #f5f6f7;
 
-  /* tema claro (normal) */
   --tc-bg: rgba(255,255,255,.92);
   --tc-shadow: 0 6px 20px rgba(0,0,0,.12);
   --icon-bg:#fff; --icon-fg:#222; --icon-bd:#d9d9d9;
 
   --rail:#cbcbcb; --fill:#6f6f6f;
 
-  /* spinner */
   --spin-base: rgba(0,0,0,.14);
   --spin-fg:   #6f6f6f;
   --spin-bg:   rgba(255,255,255,.75);
@@ -52,28 +50,29 @@ button{border:0;background:none;padding:0;cursor:pointer}
   opacity:.33
 }
 
-/* Página base */
-.page{position:absolute;inset:0;width:50%;height:100%;z-index:2}
+/* Páginas */
+.page{
+  position:absolute;inset:0;width:50%;height:100%;
+  z-index:2;                 /* base */
+  transform-style:preserve-3d;  /* <-- importante para el giro del lado derecho */
+}
+.page.turning{ z-index:7 }   /* lado activo por encima */
 .page.left {left:0; transform-origin:right center}
 .page.right{right:0;transform-origin:left  center}
 
-/* hoja (la que gira) */
+/* Hoja que gira */
 .sheet{
-  position:absolute;inset:0;width:100%;height:100%;backface-visibility:hidden;
-  will-change:transform;transform-style:preserve-3d
+  position:absolute;inset:0;width:100%;height:100%;
+  backface-visibility:hidden; transform-style:preserve-3d; will-change:transform
 }
 .sheet img{
   position:absolute;inset:0;width:100%;height:100%;
   object-fit:contain;background:#fff;opacity:0;transition:opacity .18s ease
 }
-
-/* dorso blanco (aparece cuando gira 180°) */
 .sheet .back{
   content:""; position:absolute; inset:0; background:#fff;
   transform:rotateY(180deg); backface-visibility:hidden
 }
-
-/* ribete (grosor de la hoja) */
 .sheet .edge{
   position:absolute; top:0; bottom:0; width:3px;
   left:auto; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd);
@@ -81,41 +80,38 @@ button{border:0;background:none;padding:0;cursor:pointer}
 }
 .page.left  .sheet .edge{left:0;right:auto}
 
-/* sombra en el pliegue (sobre la hoja que gira) */
+/* Sombras */
 .sheet .foldShade{
   position:absolute; inset:0; pointer-events:none; opacity:0;
   background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
 }
 .page.left  .sheet .foldShade{background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%)}
-
-/* sombra proyectada en la página opuesta */
 .oppositeShade{
   position:absolute; inset:0; pointer-events:none; opacity:0;
   background:radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.25), transparent 60%)
 }
 
-/* zonas de arrastre desde la esquina */
-.corner{position:absolute;z-index:4;width:20%;height:28%;opacity:0}
+/* Arrastre desde la esquina */
+.corner{position:absolute;z-index:8;width:20%;height:28%;opacity:0}
 .corner.left {left:0; bottom:0; transform:translate(-4%,4%)}
 .corner.right{right:0; bottom:0; transform:translate( 4%,4%)}
 
-/* 🔄 Loader circular por página */
+/* Loader circular por página */
 .spinner{
-  position:absolute; z-index:5;
+  position:absolute; z-index:6;
   top:50%; left:50%; transform:translate(-50%,-50%);
   width:46px; height:46px; border-radius:50%;
   border:3px solid var(--spin-base);
   border-top-color: var(--spin-fg);
   animation: spin .9s linear infinite;
   box-shadow: 0 2px 8px rgba(0,0,0,.12);
-  background:
-    radial-gradient(closest-side, var(--spin-bg), rgba(255,255,255,0) 70%);
+  background: radial-gradient(closest-side, var(--spin-bg), rgba(255,255,255,0) 70%);
   transition: opacity .18s ease, transform .18s ease;
 }
 .spinner.hidden{ opacity:0; transform:translate(-50%,-50%) scale(.9); pointer-events:none }
 @keyframes spin { to { transform:translate(-50%,-50%) rotate(360deg) } }
 
-/* barra inferior tipo “botón” */
+/* Barra inferior */
 .bar{width:100%;display:flex;justify-content:center}
 .bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:10px}
 .rail{
@@ -127,7 +123,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .slider::-webkit-slider-thumb{appearance:none;width:0;height:0}
 .slider::-moz-range-thumb{width:0;height:0;border:0}
 
-/* Tema oscuro en fullscreen */
+/* Fullscreen oscuro */
 :fullscreen .viewer{
   --tc-bg: rgba(20,20,20,.88); --tc-shadow: 0 10px 30px rgba(0,0,0,.35);
   --icon-bg:#111; --icon-fg:#fff; --icon-bd:#0000;
