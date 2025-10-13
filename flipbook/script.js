@@ -26,6 +26,9 @@ const right  = document.getElementById('page-right');
 const imgL   = document.getElementById('img-left');
 const imgR   = document.getElementById('img-right');
 
+const spinL  = document.getElementById('spin-left');
+const spinR  = document.getElementById('spin-right');
+
 const cornerL= document.getElementById('corner-L');
 const cornerR= document.getElementById('corner-R');
 
@@ -65,7 +68,7 @@ async function findOne(n){
 }
 
 /***********************
- * Render/UI helpers
+ * Render/UI helpers + loaders
  ***********************/
 function setSheetTransform(side, deg){
   // deg: 0 (plana) → 180 (completamente girada)
@@ -80,17 +83,15 @@ function setSheetTransform(side, deg){
   fold.style.opacity = 0.55 * k;
   opp.style.opacity  = 0.38 * k;
 
-  // grosor: desplaza ribete hacia el pliegue
+  // grosor
   const edge = page.querySelector('.edge');
   edge.style.opacity = 0.75 - 0.5*k;
 }
 
 function relax(side, toDeg, ms=520){
-  // animación a 'toDeg' (0 o 180)
   if (isAnimating) return;
   isAnimating = true;
   const page = side==='right'?right:left;
-
   const sheet = page.querySelector('.sheet');
   const from = (()=> {
     const m = sheet.style.transform.match(/rotateY\((-?[\d.]+)deg\)/);
@@ -125,11 +126,50 @@ function updateUI(){
   btnLast.disabled = atEnd;
 }
 
+/* 🔄 Carga con spinner por lado */
+function applySrc(img, url, spinner){
+  if (!url){
+    img.removeAttribute('src');
+    img.style.opacity = 0;
+    spinner.classList.add('hidden');
+    return;
+  }
+  // muestra spinner aunque la imagen pueda venir de caché
+  spinner.classList.remove('hidden');
+  img.style.opacity = 0;
+
+  // Limpia listeners previos
+  img.onload = null; img.onerror = null;
+
+  img.onload = () => {
+    spinner.classList.add('hidden');
+    img.style.opacity = 1;
+  };
+  img.onerror = () => {
+    // si falla, oculta spinner y deja la hoja en blanco
+    spinner.classList.add('hidden');
+    img.style.opacity = 0;
+  };
+
+  img.src = url;
+
+  // si ya está cacheada
+  if (img.complete && img.naturalWidth > 0){
+    spinner.classList.add('hidden');
+    img.style.opacity = 1;
+  }
+}
+
 function render(){
-  if(!pages.length){ imgL.removeAttribute('src'); imgR.removeAttribute('src'); updateUI(); return; }
+  if(!pages.length){
+    imgL.removeAttribute('src'); imgR.removeAttribute('src');
+    spinL.classList.add('hidden'); spinR.classList.add('hidden');
+    updateUI(); return;
+  }
   idx = clampPair(idx, pages.length);
-  imgL.src = pages[idx]     || '';
-  imgR.src = pages[idx+1]   || '';
+
+  applySrc(imgL, pages[idx]   || '', spinL);
+  applySrc(imgR, pages[idx+1] || '', spinR);
 
   // reset transforms/ sombras a estado plano
   setSheetTransform('left',  0);
@@ -142,13 +182,11 @@ function render(){
  ***********************/
 function next(){
   if (isAnimating || idx+2>=pages.length) return;
-  // gira la derecha 0→180 y luego avanzamos al siguiente par
   relax('right', 180, 560);
   setTimeout(()=>{ idx+=2; render(); }, 560);
 }
 function prev(){
   if (isAnimating || idx<=0) return;
-  // gira la izquierda 0→180 hacia atrás y luego retrocedemos
   relax('left', 180, 560);
   setTimeout(()=>{ idx-=2; render(); }, 560);
 }
@@ -166,7 +204,6 @@ function startDrag(side, e){
     startX: e.clientX || (e.touches && e.touches[0].clientX) || 0,
     rect
   };
-  // activar una ligera elevación inicial
   setSheetTransform(side, 10);
 }
 function moveDrag(e){
@@ -178,11 +215,9 @@ function moveDrag(e){
   let t;
 
   if (side==='right'){
-    // 0 en el centro, 1 en el borde izquierdo (peel completo)
-    t = Math.min(1, Math.max(0, (center - x)/half)); // 0..1
+    t = Math.min(1, Math.max(0, (center - x)/half));
     setSheetTransform('right', t*180);
   }else{
-    // izquierda: 0 en centro, 1 en borde derecho
     t = Math.min(1, Math.max(0, (x - center)/half));
     setSheetTransform('left', t*180);
   }
@@ -193,11 +228,9 @@ function endDrag(){
   const {side, t} = drag;
   drag = null;
   if (t>0.5){
-    // completo: termina giro y cambia de spread
     if (side==='right'){ relax('right', 180, 420); setTimeout(()=>{ idx+=2; render(); }, 420); }
     else               { relax('left',  180, 420); setTimeout(()=>{ idx-=2; render(); }, 420); }
   }else{
-    // vuelve plano
     relax(side, 0, 360);
   }
 }
@@ -245,14 +278,14 @@ document.addEventListener('fullscreenchange', ()=>{
       if(url){
         map[n]=url; misses=0;
         if(!found){ const r=await exists(url); r.ok && setARfrom(r.i); found=true; }
-      }else if(found){
+      } else if(found){
         map[n]=null; misses++;
         if(misses>=6) break;
       }
     }
     let last=0; for(let i=map.length-1;i>=1;i--) if(map[i]!==undefined){last=i;break;}
     pages=[]; for(let i=1;i<=last;i++) pages.push(map[i]??null);
-  }else{
+  } else {
     pages = Array.from({length:TOTAL_PAGES},(_,i)=>`assets/pdf-images/page-${i+1}.jpg`);
   }
 
