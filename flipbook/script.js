@@ -68,36 +68,48 @@ async function findOne(n){
 }
 
 /***********************
- * Render/UI helpers + loaders
+ * z-index dinámico del lado activo
+ ***********************/
+function beginTurn(side){
+  left.classList.remove('turning');
+  right.classList.remove('turning');
+  if (side==='right') right.classList.add('turning');
+  else                left.classList.add('turning');
+}
+function endTurn(){
+  left.classList.remove('turning');
+  right.classList.remove('turning');
+}
+
+/***********************
+ * Render/UI + loaders
  ***********************/
 function setSheetTransform(side, deg){
-  // deg: 0 (plana) → 180 (completamente girada)
-  const page = side==='right' ? right : left;
+  const page  = side==='right' ? right : left;
   const sheet = page.querySelector('.sheet');
   sheet.style.transform = `rotateY(${side==='right' ? -deg : deg}deg)`;
 
-  // sombras dinámicas
   const fold = page.querySelector('.foldShade');
   const opp  = page.querySelector('.oppositeShade');
   const k = Math.sin(Math.min(Math.PI, (deg/180)*Math.PI)); // 0..1..0
   fold.style.opacity = 0.55 * k;
   opp.style.opacity  = 0.38 * k;
 
-  // grosor
   const edge = page.querySelector('.edge');
   edge.style.opacity = 0.75 - 0.5*k;
 }
 
-function relax(side, toDeg, ms=520){
+function relax(side, toDeg, ms=520, done){
   if (isAnimating) return;
   isAnimating = true;
+  beginTurn(side);
+
   const page = side==='right'?right:left;
   const sheet = page.querySelector('.sheet');
   const from = (()=> {
     const m = sheet.style.transform.match(/rotateY\((-?[\d.]+)deg\)/);
     if(!m) return 0;
-    const cur = Math.abs(parseFloat(m[1]));
-    return cur;
+    return Math.abs(parseFloat(m[1]));
   })();
 
   const start = performance.now();
@@ -106,7 +118,7 @@ function relax(side, toDeg, ms=520){
     const d = from + (toDeg-from)*easeInOut(t);
     setSheetTransform(side, d);
     if (t<1) requestAnimationFrame(frame);
-    else { isAnimating=false; }
+    else { isAnimating=false; endTurn(); done && done(); }
   }
   requestAnimationFrame(frame);
 }
@@ -126,7 +138,7 @@ function updateUI(){
   btnLast.disabled = atEnd;
 }
 
-/* 🔄 Carga con spinner por lado */
+/* Loader por lado */
 function applySrc(img, url, spinner){
   if (!url){
     img.removeAttribute('src');
@@ -134,30 +146,12 @@ function applySrc(img, url, spinner){
     spinner.classList.add('hidden');
     return;
   }
-  // muestra spinner aunque la imagen pueda venir de caché
   spinner.classList.remove('hidden');
   img.style.opacity = 0;
-
-  // Limpia listeners previos
-  img.onload = null; img.onerror = null;
-
-  img.onload = () => {
-    spinner.classList.add('hidden');
-    img.style.opacity = 1;
-  };
-  img.onerror = () => {
-    // si falla, oculta spinner y deja la hoja en blanco
-    spinner.classList.add('hidden');
-    img.style.opacity = 0;
-  };
-
+  img.onload  = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 1; };
+  img.onerror = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 0; };
   img.src = url;
-
-  // si ya está cacheada
-  if (img.complete && img.naturalWidth > 0){
-    spinner.classList.add('hidden');
-    img.style.opacity = 1;
-  }
+  if (img.complete && img.naturalWidth>0){ spinner.classList.add('hidden'); img.style.opacity=1; }
 }
 
 function render(){
@@ -167,37 +161,35 @@ function render(){
     updateUI(); return;
   }
   idx = clampPair(idx, pages.length);
-
   applySrc(imgL, pages[idx]   || '', spinL);
   applySrc(imgR, pages[idx+1] || '', spinR);
 
-  // reset transforms/ sombras a estado plano
   setSheetTransform('left',  0);
   setSheetTransform('right', 0);
+  endTurn();
   updateUI();
 }
 
 /***********************
- * Navegación con giro realista
+ * Navegación (ahora con beginTurn/endTurn)
  ***********************/
 function next(){
   if (isAnimating || idx+2>=pages.length) return;
-  relax('right', 180, 560);
-  setTimeout(()=>{ idx+=2; render(); }, 560);
+  relax('right', 180, 560, ()=>{ idx+=2; render(); });
 }
 function prev(){
   if (isAnimating || idx<=0) return;
-  relax('left', 180, 560);
-  setTimeout(()=>{ idx-=2; render(); }, 560);
+  relax('left', 180, 560, ()=>{ idx-=2; render(); });
 }
 function first(){ if(idx>0){ idx=0; render(); } }
 function last(){ const lastPair = clampPair(pages.length-2, pages.length); idx=lastPair; render(); }
 
 /***********************
- * Drag desde esquina (preview tipo "peel")
+ * Drag desde la esquina
  ***********************/
 function startDrag(side, e){
   if (isAnimating) return;
+  beginTurn(side);
   const rect = book.getBoundingClientRect();
   drag = {
     side,
@@ -228,10 +220,10 @@ function endDrag(){
   const {side, t} = drag;
   drag = null;
   if (t>0.5){
-    if (side==='right'){ relax('right', 180, 420); setTimeout(()=>{ idx+=2; render(); }, 420); }
-    else               { relax('left',  180, 420); setTimeout(()=>{ idx-=2; render(); }, 420); }
+    if (side==='right'){ relax('right', 180, 420, ()=>{ idx+=2; render(); }); }
+    else               { relax('left',  180, 420, ()=>{ idx-=2; render(); }); }
   }else{
-    relax(side, 0, 360);
+    relax(side, 0, 360, ()=>{ /* no cambio de spread */ });
   }
 }
 
@@ -268,7 +260,7 @@ document.addEventListener('fullscreenchange', ()=>{
 });
 
 /***********************
- * Init (detección con huecos preservados)
+ * Init (detección)
  ***********************/
 (async function init(){
   if (AUTO_DETECT){
