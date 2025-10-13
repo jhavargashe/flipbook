@@ -5,6 +5,15 @@ const AUTO_DETECT = true;
 const MAX_PAGES   = 300;
 const TOTAL_PAGES = 10;
 
+/* Tuning rápido */
+const FLIP_MS            = 640;  // click
+const FLIP_MS_DRAG_DONE  = 380;  // completar tras drag
+const FLIP_MS_RETURN     = 260;  // rebotar atrás si no alcanza
+const DRAG_COMPLETE_T    = 0.45; // umbral completar
+const LEFT_QUARTER_EDGE  = 0.25; // click sostenido izq
+const RIGHT_QUARTER_EDGE = 0.75; // click sostenido der
+const WHEEL_THROTTLE_MS  = 320;
+
 const NAME_PATTERNS = n => ([`page-${n}`, `page-${String(n).padStart(2,'0')}`, `page-${String(n).padStart(3,'0')}`]);
 const EXT  = ['jpg','jpeg','png','webp'];
 const PATH = base => `assets/pdf-images/${base}`;
@@ -12,11 +21,13 @@ const PATH = base => `assets/pdf-images/${base}`;
 /***********************
  * Estado / refs
  ***********************/
-let pages = [];                 // urls por página
+let pages = [];                 // urls por página real
 let idx   = 0;                  // 0 -> (1,2), 2 -> (3,4)...
 let isAnimating = false;
+
 let drag = null;                // { dir, overlay, shade, rect, startX, t, deg }
 let wheelLockUntil = 0;
+let suppressClick = false;
 
 const viewer = document.getElementById('viewer');
 const book   = document.getElementById('book');
@@ -37,6 +48,9 @@ const btnNext  = document.getElementById('btn-next');
 const btnFirst = document.getElementById('btn-first');
 const btnLast  = document.getElementById('btn-last');
 const btnFS    = document.getElementById('btn-fs');
+
+const hintL = document.getElementById('edge-left');
+const hintR = document.getElementById('edge-right');
 
 /***********************
  * Util
@@ -64,22 +78,36 @@ async function findOne(n){
   return null;
 }
 
-/* 🔮 decode() fiable */
-function decodeImage(url){
-  if (!url) return Promise.resolve();
-  const img = new Image();
-  img.src = url;
-  if (img.decode) {
-    return img.decode().catch(()=>{}); // en errores, resolvemos igual
-  }
-  return new Promise(res => { img.onload = res; img.onerror = res; });
+/* ⚡ Preparación avanzada: fetch + createImageBitmap + ObjectURL + decode + LRU */
+const preparedURL = new Map();
+const preparedLRU = [];
+const PREP_LIMIT = 30;
+
+async function prepareImage(url){
+  if (!url || preparedURL.has(url)) return;
+  try{
+    const res = await fetch(url, {cache:'force-cache'});
+    const blob = await res.blob();
+    if (self.createImageBitmap) { try{ await createImageBitmap(blob); }catch{} }
+    const obj = URL.createObjectURL(blob);
+    preparedURL.set(url, obj);
+    preparedLRU.push(url);
+    if (preparedLRU.length>PREP_LIMIT){
+      const old = preparedLRU.shift();
+      const u = preparedURL.get(old);
+      preparedURL.delete(old);
+      URL.revokeObjectURL(u);
+    }
+    const img = new Image(); img.src = obj; if (img.decode){ try{ await img.decode(); }catch{} }
+  }catch(e){}
 }
+const getPreparedURL = url => preparedURL.get(url) || url;
+
 function ensureNextPairReady(dir){
-  if (dir==='forward'){
-    return Promise.all([ decodeImage(pages[idx+2]), decodeImage(pages[idx+3]) ]);
-  } else {
-    return Promise.all([ decodeImage(pages[idx-2]), decodeImage(pages[idx-1]) ]);
-  }
+  const urls = (dir==='forward')
+    ? [pages[idx+2], pages[idx+3]]
+    : [pages[idx-2], pages[idx-1]];
+  return Promise.all(urls.filter(Boolean).map(u=>prepareImage(u)));
 }
 
 /***********************
@@ -90,9 +118,12 @@ function applySrc(img, url, spinner){
     img.removeAttribute('src'); img.style.opacity=0; spinner.classList.add('hidden'); return;
   }
   spinner.classList.remove('hidden'); img.style.opacity=0;
+  const finalURL = getPreparedURL(url);
   img.onload  = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 1; };
   img.onerror = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 0; };
-  img.src = url;
+  img.decoding = 'async';
+  img.loading  = 'eager';
+  img.src = finalURL;
   if (img.complete && img.naturalWidth>0){ spinner.classList.add('hidden'); img.style.opacity=1; }
 }
 
@@ -109,6 +140,9 @@ function updateUI(){
   btnFirst.disabled = atStart;
   btnNext.disabled  = atEnd;
   btnLast.disabled  = atEnd;
+
+  hintL.disabled = atStart;
+  hintR.disabled = atEnd;
 }
 
 function render(){
@@ -129,7 +163,7 @@ function render(){
 function makeTurnOverlay(dir) {
   const turn = document.createElement('div');
   turn.className = 'turn';
-  turn.classList.add(dir); // ⭐ 'forward' o 'backward' para limitar la sombra
+  turn.classList.add(dir); // 'forward'|'backward' → ubica sombra
 
   const front = document.createElement('div'); front.className='face front';
   const back  = document.createElement('div'); back.className='face back';
@@ -143,12 +177,12 @@ function makeTurnOverlay(dir) {
 
   const shade = document.createElement('div'); shade.className='turnShade';
 
-  if (dir==='forward'){      // R → L
-    fR.src = pages[idx+1] || '';  fL.style.opacity = 0;   // cara = derecha actual
-    bL.src = pages[idx+2] || '';  bR.style.opacity = 0;   // dorso = próxima izquierda
-  } else {                   // L → R
-    fL.src = pages[idx]   || '';  fR.style.opacity = 0;   // cara = izquierda actual
-    bR.src = pages[idx-1] || '';  bL.style.opacity = 0;   // dorso = derecha anterior
+  if (dir==='forward'){ // R → L
+    fR.src = getPreparedURL(pages[idx+1] || '');  fL.style.opacity = 0;
+    bL.src = getPreparedURL(pages[idx+2] || '');  bR.style.opacity = 0;
+  } else {              // L → R
+    fL.src = getPreparedURL(pages[idx]   || '');  fR.style.opacity = 0;
+    bR.src = getPreparedURL(pages[idx-1] || '');  bL.style.opacity = 0;
   }
 
   turn.append(front, back, shade);
@@ -159,7 +193,7 @@ function makeTurnOverlay(dir) {
 function setTurnDeg(turnEl, shadeEl, deg){
   turnEl.style.transform = `rotateY(${deg}deg)`;
   const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
-  shadeEl.style.opacity = 0.50 * k;    // sombra del pliegue solo en la hoja activa
+  shadeEl.style.opacity = 0.50 * k;
 }
 
 function animateTurn(dir, fromDeg, toDeg, ms, gatePromise, onDone){
@@ -176,7 +210,6 @@ function animateTurn(dir, fromDeg, toDeg, ms, gatePromise, onDone){
     setTurnDeg(turn, shade, d);
     if(t<1) requestAnimationFrame(frame);
     else{
-      // Espera a que las próximas hojas estén decodificadas antes de revelar
       Promise.resolve(gatePromise).then(()=>{
         turn.remove(); isAnimating = false; onDone && onDone();
       });
@@ -186,26 +219,33 @@ function animateTurn(dir, fromDeg, toDeg, ms, gatePromise, onDone){
 }
 
 /***********************
- * Navegación (botones/teclado)
+ * Navegación (botones / teclado)
  ***********************/
 function next(){
   if (isAnimating || idx+2>=pages.length) return;
   const gate = ensureNextPairReady('forward');
-  animateTurn('forward', 0, -180, 640, gate, ()=>{ idx+=2; render(); });
+  animateTurn('forward', 0, -180, FLIP_MS, gate, ()=>{ idx+=2; render(); });
 }
 function prev(){
   if (isAnimating || idx<=0) return;
   const gate = ensureNextPairReady('backward');
-  animateTurn('backward', 0, 180, 640, gate, ()=>{ idx-=2; render(); });
+  animateTurn('backward', 0, 180, FLIP_MS, gate, ()=>{ idx-=2; render(); });
 }
 function first(){ if(!isAnimating && idx>0){ idx=0; render(); } }
 function last(){ if(isAnimating) return; const lastPair = clampPair(pages.length-2, pages.length); idx=lastPair; render(); }
 
+/* 🔗 Conectar botones (esto faltaba en tu versión) */
+btnNext.addEventListener('click', next);
+btnPrev.addEventListener('click', prev);
+btnFirst.addEventListener('click', first);
+btnLast.addEventListener('click', last);
+
 /***********************
- * Drag de esquina (interactivo)
+ * Drag de esquina + “click sostenido por cuartos”
  ***********************/
 function startDrag(side, e){
   if (isAnimating) return;
+  suppressClick = true;
   const dir = (side==='right') ? 'forward' : 'backward';
   const {turn, shade} = makeTurnOverlay(dir);
 
@@ -236,10 +276,9 @@ function endDrag(){
   const {dir, t, overlay, shade, deg} = drag;
   drag = null;
 
-  if (t>0.45){
+  if (t>DRAG_COMPLETE_T){
     const gate = ensureNextPairReady(dir);
-    // completa el giro desde el ángulo actual
-    const ms = 380, from = deg, to = (dir==='forward') ? -180 : 180;
+    const ms = FLIP_MS_DRAG_DONE, from = deg, to = (dir==='forward') ? -180 : 180;
     isAnimating = true;
     const t0 = performance.now();
     function frame(now){
@@ -257,8 +296,7 @@ function endDrag(){
     }
     requestAnimationFrame(frame);
   } else {
-    // volver a 0°
-    const ms = 260, from = deg, to = 0;
+    const ms = FLIP_MS_RETURN, from = deg, to = 0;
     isAnimating = true;
     const t0 = performance.now();
     function frame(now){
@@ -270,55 +308,60 @@ function endDrag(){
     }
     requestAnimationFrame(frame);
   }
+  setTimeout(()=>{ suppressClick=false; }, 80);
 }
 
+/* Esquinas (opcional) */
+cornerR.addEventListener('pointerdown', e=>{ startDrag('right', e); });
+cornerL.addEventListener('pointerdown', e=>{ startDrag('left',  e); });
+
+/* “Click sostenido” por cuartos dentro del libro */
+book.addEventListener('pointerdown', (e)=>{
+  if (isAnimating) return;
+  if (e.target.closest('.corner')) return;
+
+  const r = book.getBoundingClientRect();
+  const x = (e.touches?e.touches[0].clientX:e.clientX);
+  const rel = (x - r.left) / r.width; // 0..1
+
+  if (rel <= LEFT_QUARTER_EDGE){ startDrag('left', e); }
+  else if (rel >= RIGHT_QUARTER_EDGE){ startDrag('right', e); }
+});
+
+/* mover/soltar */
+window.addEventListener('pointermove', moveDrag, {passive:true});
+window.addEventListener('pointerup',   endDrag);
+window.addEventListener('pointercancel', endDrag);
+
 /***********************
- * Click dentro del libro (mitad izq/der)
+ * Click simple (mitades)
  ***********************/
 book.addEventListener('click', (e)=>{
-  if (isAnimating) return;
-  // evita que click sobre botones invisibles de esquina dispare navegación
+  if (isAnimating || suppressClick) return;
   if (e.target && e.target.closest('.corner')) return;
-
   const rect = book.getBoundingClientRect();
   const centerX = rect.left + rect.width/2;
   if (e.clientX < centerX) prev(); else next();
 });
 
 /***********************
- * Rueda del mouse (sobre el libro)
+ * Rueda del mouse
  ***********************/
 book.addEventListener('wheel', (e)=>{
-  e.preventDefault();               // para que el scroll no mueva la página del sitio
+  e.preventDefault();
   if (isAnimating) return;
   const now = performance.now();
-  if (now < wheelLockUntil) return; // throttle
-  wheelLockUntil = now + 350;
+  if (now < wheelLockUntil) return;
+  wheelLockUntil = now + WHEEL_THROTTLE_MS;
   if (e.deltaY > 0) next();
   else if (e.deltaY < 0) prev();
 }, { passive:false });
 
 /***********************
- * Teclado
+ * Flechas de guía
  ***********************/
-document.addEventListener('keydown', e=>{
-  if(e.key==='ArrowRight') next();
-  if(e.key==='ArrowLeft')  prev();
-});
-
-/***********************
- * Esquinas (drag)
- ***********************/
-cornerR.addEventListener('pointerdown', e=>{ startDrag('right', e); });
-cornerL.addEventListener('pointerdown', e=>{ startDrag('left',  e); });
-window.addEventListener('pointermove', moveDrag, {passive:true});
-window.addEventListener('pointerup',   endDrag);
-window.addEventListener('pointercancel', endDrag);
-
-/***********************
- * Slider
- ***********************/
-slider.addEventListener('input', ()=>{ idx=parseInt(slider.value,10)*2; render(); });
+hintL.addEventListener('click', prev);
+hintR.addEventListener('click', next);
 
 /***********************
  * Fullscreen
@@ -336,7 +379,12 @@ document.addEventListener('fullscreenchange', ()=>{
 });
 
 /***********************
- * Init (detección de assets)
+ * Slider
+ ***********************/
+slider.addEventListener('input', ()=>{ idx=parseInt(slider.value,10)*2; render(); });
+
+/***********************
+ * Init (detección de assets corregida)
  ***********************/
 (async function init(){
   if (AUTO_DETECT){
@@ -351,12 +399,18 @@ document.addEventListener('fullscreenchange', ()=>{
         if(misses>=6) break;
       }
     }
-    let last=0; for(let i=map.length-1;i>=1;i--) if(map[i]!==undefined){last=i;break;}
-    pages=[]; for(let i=1;i<=last;i++) pages.push(map[i]??null);
+    /* ⭐ Solo consideramos las que existen (truthy) */
+    let last=0; for(let i=map.length-1;i>=1;i--) if(map[i]){ last=i; break; }
+    pages=[]; for(let i=1;i<=last;i++) pages.push(map[i]||null);
   } else {
     pages = Array.from({length:TOTAL_PAGES},(_,i)=>`assets/pdf-images/page-${i+1}.jpg`);
   }
 
-  if(pages.length) preload(pages.slice(0,6));
+  /* Prepara primeras imágenes para mejor sensación */
+  if(pages.length){
+    const seed = pages.slice(0, Math.min(6, pages.length)).filter(Boolean);
+    await Promise.all(seed.map(u=>prepareImage(u)));
+    preload(seed);
+  }
   render();
 })();
