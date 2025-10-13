@@ -19,14 +19,14 @@
 
     <!-- Libro + barra (centrados) -->
     <div class="stack">
-      <!-- ⚙️ Configuración de inicio vía data-attributes -->
+      <!-- Ajusta aquí el modo de inicio -->
       <!-- data-start="cover" | "spread"  +  data-initial-spread="1-2"|"2-3" -->
       <section id="book" class="book"
         data-start="cover"
         data-initial-spread="2-3"
         aria-label="Flipbook">
 
-        <!-- Si no quieres viñeta estática: ocúltala con .gutter{display:none} en CSS -->
+        <!-- Si no quieres viñeta estática, ocúltala con .gutter{display:none} -->
         <span class="gutter"></span>
 
         <!-- IZQUIERDA (estática) -->
@@ -53,12 +53,12 @@
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Zonas de ARRASTRE por BORDE (vertical completo) -->
+        <!-- Franja de ARRASTRE por BORDE (vertical completa, reducida) -->
         <div id="drag-left"  class="drag-zone left"  aria-label="Arrastrar atrás"></div>
         <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
       </section>
 
-      <!-- Barra inferior -->
+      <!-- Barra inferior (más baja para no interferir) -->
       <nav class="bar">
         <div class="bar-box">
           <div class="rail">
@@ -69,9 +69,9 @@
       </nav>
     </div>
 
-    <!-- Flechas-guía laterales (fuera del libro) -->
-    <button id="edge-left"  class="edge-hint left"  title="Atrás">‹</button>
-    <button id="edge-right" class="edge-hint right" title="Adelante">›</button>
+    <!-- Flechas-guía laterales (alineadas con la barra/ancho del libro) -->
+    <button id="edge-left"  class="edge-hint left"  title="Atrás">❮</button>
+    <button id="edge-right" class="edge-hint right" title="Adelante">❯</button>
   </div>
 
   <script src="script.js" defer></script>
