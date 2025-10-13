@@ -12,11 +12,11 @@ const PATH = base => `assets/pdf-images/${base}`;
 /***********************
  * Estado / refs
  ***********************/
-let pages = [];                 // urls por página (1..N) -> 0..N-1
-let idx   = 0;                  // índice de par visible (0->1-2, 2->3-4, ...)
+let pages = [];                 // urls por página
+let idx   = 0;                  // 0 -> (1,2), 2 -> (3,4)...
 let isAnimating = false;
-
-let drag = null;                // drag overlay { dir, overlay, shade, rect, startX, t, deg }
+let drag = null;                // { dir, overlay, shade, rect, startX, t, deg }
+let wheelLockUntil = 0;
 
 const viewer = document.getElementById('viewer');
 const book   = document.getElementById('book');
@@ -46,7 +46,7 @@ const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
 
 function setARfrom(img){
   const w=img.naturalWidth||1000, h=img.naturalHeight||1500;
-  const ar=(2*w)/h;                               // 2 páginas / 1 alto
+  const ar=(2*w)/h;
   book.style.setProperty('--book-ar', ar);
   const resize=()=>book.style.height=(book.clientWidth/ar)+'px';
   resize(); addEventListener('resize', resize);
@@ -62,6 +62,24 @@ async function findOne(n){
       if(r.ok) return r.url;
     }
   return null;
+}
+
+/* 🔮 decode() fiable */
+function decodeImage(url){
+  if (!url) return Promise.resolve();
+  const img = new Image();
+  img.src = url;
+  if (img.decode) {
+    return img.decode().catch(()=>{}); // en errores, resolvemos igual
+  }
+  return new Promise(res => { img.onload = res; img.onerror = res; });
+}
+function ensureNextPairReady(dir){
+  if (dir==='forward'){
+    return Promise.all([ decodeImage(pages[idx+2]), decodeImage(pages[idx+3]) ]);
+  } else {
+    return Promise.all([ decodeImage(pages[idx-2]), decodeImage(pages[idx-1]) ]);
+  }
 }
 
 /***********************
@@ -109,25 +127,28 @@ function render(){
  * Hoja overlay (flip único)
  ***********************/
 function makeTurnOverlay(dir) {
-  // dir: 'forward' (R->L)  |  'backward' (L->R)
   const turn = document.createElement('div');
   turn.className = 'turn';
+  turn.classList.add(dir); // ⭐ 'forward' o 'backward' para limitar la sombra
+
   const front = document.createElement('div'); front.className='face front';
   const back  = document.createElement('div'); back.className='face back';
+
   const fL = document.createElement('img'); fL.className='half left';
   const fR = document.createElement('img'); fR.className='half right';
   const bL = document.createElement('img'); bL.className='half left';
   const bR = document.createElement('img'); bR.className='half right';
+
   front.append(fL,fR); back.append(bL,bR);
+
   const shade = document.createElement('div'); shade.className='turnShade';
 
-  // Cara y dorso según dirección
-  if (dir==='forward'){
-    fR.src = pages[idx+1] || '';  fL.style.opacity = 0; // cara: derecha actual
-    bL.src = pages[idx+2] || '';  bR.style.opacity = 0; // dorso: próxima izquierda
-  } else {
-    fL.src = pages[idx]   || '';  fR.style.opacity = 0; // cara: izquierda actual
-    bR.src = pages[idx-1] || '';  bL.style.opacity = 0; // dorso: derecha anterior
+  if (dir==='forward'){      // R → L
+    fR.src = pages[idx+1] || '';  fL.style.opacity = 0;   // cara = derecha actual
+    bL.src = pages[idx+2] || '';  bR.style.opacity = 0;   // dorso = próxima izquierda
+  } else {                   // L → R
+    fL.src = pages[idx]   || '';  fR.style.opacity = 0;   // cara = izquierda actual
+    bR.src = pages[idx-1] || '';  bL.style.opacity = 0;   // dorso = derecha anterior
   }
 
   turn.append(front, back, shade);
@@ -136,13 +157,12 @@ function makeTurnOverlay(dir) {
 }
 
 function setTurnDeg(turnEl, shadeEl, deg){
-  // deg: 0 → ±180 (pivot en el lomo, centro del libro)
   turnEl.style.transform = `rotateY(${deg}deg)`;
   const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
-  shadeEl.style.opacity = 0.50 * k;
+  shadeEl.style.opacity = 0.50 * k;    // sombra del pliegue solo en la hoja activa
 }
 
-function animateTurn(dir, fromDeg, toDeg, ms, onDone){
+function animateTurn(dir, fromDeg, toDeg, ms, gatePromise, onDone){
   if (isAnimating) return;
   isAnimating = true;
 
@@ -156,24 +176,27 @@ function animateTurn(dir, fromDeg, toDeg, ms, onDone){
     setTurnDeg(turn, shade, d);
     if(t<1) requestAnimationFrame(frame);
     else{
-      turn.remove(); isAnimating = false; onDone && onDone();
+      // Espera a que las próximas hojas estén decodificadas antes de revelar
+      Promise.resolve(gatePromise).then(()=>{
+        turn.remove(); isAnimating = false; onDone && onDone();
+      });
     }
   }
   requestAnimationFrame(frame);
 }
 
 /***********************
- * Navegación (click / teclado)
+ * Navegación (botones/teclado)
  ***********************/
 function next(){
   if (isAnimating || idx+2>=pages.length) return;
-  if (pages[idx+2]) { const i=new Image(); i.src=pages[idx+2]; }
-  animateTurn('forward', 0, -180, 640, ()=>{ idx+=2; render(); });
+  const gate = ensureNextPairReady('forward');
+  animateTurn('forward', 0, -180, 640, gate, ()=>{ idx+=2; render(); });
 }
 function prev(){
   if (isAnimating || idx<=0) return;
-  if (pages[idx-1]) { const i=new Image(); i.src=pages[idx-1]; }
-  animateTurn('backward', 0, 180, 640, ()=>{ idx-=2; render(); });
+  const gate = ensureNextPairReady('backward');
+  animateTurn('backward', 0, 180, 640, gate, ()=>{ idx-=2; render(); });
 }
 function first(){ if(!isAnimating && idx>0){ idx=0; render(); } }
 function last(){ if(isAnimating) return; const lastPair = clampPair(pages.length-2, pages.length); idx=lastPair; render(); }
@@ -190,7 +213,6 @@ function startDrag(side, e){
   const startX = (e.touches?e.touches[0].clientX:e.clientX) ?? rect.right;
   drag = { dir, overlay:turn, shade, rect, startX, t:0, deg:0 };
 
-  // pequeña inclinación inicial para feedback
   setTurnDeg(turn, shade, dir==='forward' ? -8 : 8);
 }
 function moveDrag(e){
@@ -200,10 +222,9 @@ function moveDrag(e){
   const half = rect.width/2;
   const center = rect.left + half;
 
-  // normalizamos 0..1 según desde qué lado se arrastra
   let t;
-  if (dir==='forward'){ t = Math.min(1, Math.max(0, (center - x)/half)); }    // R -> L
-  else                { t = Math.min(1, Math.max(0, (x - center)/half)); }    // L -> R
+  if (dir==='forward'){ t = Math.min(1, Math.max(0, (center - x)/half)); }
+  else                { t = Math.min(1, Math.max(0, (x - center)/half)); }
   drag.t = t;
 
   const deg = (dir==='forward') ? -180*t : 180*t;
@@ -216,10 +237,9 @@ function endDrag(){
   drag = null;
 
   if (t>0.45){
+    const gate = ensureNextPairReady(dir);
     // completa el giro desde el ángulo actual
-    const ms = 380;
-    const from = deg;
-    const to   = (dir==='forward') ? -180 : 180;
+    const ms = 380, from = deg, to = (dir==='forward') ? -180 : 180;
     isAnimating = true;
     const t0 = performance.now();
     function frame(now){
@@ -228,17 +248,17 @@ function endDrag(){
       setTurnDeg(overlay, shade, d);
       if (k<1) requestAnimationFrame(frame);
       else {
-        overlay.remove(); isAnimating=false;
-        if (dir==='forward'){ idx+=2; } else { idx-=2; }
-        render();
+        Promise.resolve(gate).then(()=>{
+          overlay.remove(); isAnimating=false;
+          if (dir==='forward'){ idx+=2; } else { idx-=2; }
+          render();
+        });
       }
     }
     requestAnimationFrame(frame);
   } else {
-    // vuelve a 0°
-    const ms = 260;
-    const from = deg;
-    const to   = 0;
+    // volver a 0°
+    const ms = 260, from = deg, to = 0;
     isAnimating = true;
     const t0 = performance.now();
     function frame(now){
@@ -253,26 +273,56 @@ function endDrag(){
 }
 
 /***********************
- * Eventos
+ * Click dentro del libro (mitad izq/der)
  ***********************/
-document.getElementById('btn-next').addEventListener('click', next);
-document.getElementById('btn-prev').addEventListener('click', prev);
-document.getElementById('btn-first').addEventListener('click', first);
-document.getElementById('btn-last').addEventListener('click', last);
+book.addEventListener('click', (e)=>{
+  if (isAnimating) return;
+  // evita que click sobre botones invisibles de esquina dispare navegación
+  if (e.target && e.target.closest('.corner')) return;
 
+  const rect = book.getBoundingClientRect();
+  const centerX = rect.left + rect.width/2;
+  if (e.clientX < centerX) prev(); else next();
+});
+
+/***********************
+ * Rueda del mouse (sobre el libro)
+ ***********************/
+book.addEventListener('wheel', (e)=>{
+  e.preventDefault();               // para que el scroll no mueva la página del sitio
+  if (isAnimating) return;
+  const now = performance.now();
+  if (now < wheelLockUntil) return; // throttle
+  wheelLockUntil = now + 350;
+  if (e.deltaY > 0) next();
+  else if (e.deltaY < 0) prev();
+}, { passive:false });
+
+/***********************
+ * Teclado
+ ***********************/
 document.addEventListener('keydown', e=>{
   if(e.key==='ArrowRight') next();
   if(e.key==='ArrowLeft')  prev();
 });
 
+/***********************
+ * Esquinas (drag)
+ ***********************/
 cornerR.addEventListener('pointerdown', e=>{ startDrag('right', e); });
 cornerL.addEventListener('pointerdown', e=>{ startDrag('left',  e); });
 window.addEventListener('pointermove', moveDrag, {passive:true});
 window.addEventListener('pointerup',   endDrag);
 window.addEventListener('pointercancel', endDrag);
 
+/***********************
+ * Slider
+ ***********************/
 slider.addEventListener('input', ()=>{ idx=parseInt(slider.value,10)*2; render(); });
 
+/***********************
+ * Fullscreen
+ ***********************/
 btnFS.addEventListener('click', ()=>{
   const entering = btnFS.dataset.state!=='exit';
   const t = viewer;
