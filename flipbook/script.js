@@ -1,22 +1,18 @@
-/***********************
- * Config y “tuning”
- ***********************/
+/********* Config *********/
 const AUTO_DETECT = true;
 const MAX_PAGES   = 300;
 
-const FLIP_MS            = 640;  // click
-const FLIP_MS_DRAG_DONE  = 380;  // completar tras drag
-const FLIP_MS_RETURN     = 260;  // rebotar atrás
-const DRAG_COMPLETE_T    = 0.45; // umbral completar
+const FLIP_MS            = 640;
+const FLIP_MS_DRAG_DONE  = 380;
+const FLIP_MS_RETURN     = 260;
+const DRAG_COMPLETE_T    = 0.45;
 const WHEEL_THROTTLE_MS  = 320;
 
 const NAME_PATTERNS = n => ([`page-${n}`, `page-${String(n).padStart(2,'0')}`, `page-${String(n).padStart(3,'0')}`]);
 const EXT  = ['jpg','jpeg','png','webp'];
 const PATH = base => `assets/pdf-images/${base}`;
 
-/***********************
- * Estado / refs
- ***********************/
+/********* Estado / refs *********/
 let pages = [];                 // 1..N (index 0 vacío)
 let isAnimating = false;
 let wheelLockUntil = 0;
@@ -25,10 +21,16 @@ let suppressClick = false;
 const viewer = document.getElementById('viewer');
 const book   = document.getElementById('book');
 
+const pageLeft  = document.getElementById('page-left');
+const pageRight = document.getElementById('page-right');
+
 const imgL   = document.getElementById('img-left');
 const imgR   = document.getElementById('img-right');
 const spinL  = document.getElementById('spin-left');
 const spinR  = document.getElementById('spin-right');
+
+const oppL   = pageLeft.querySelector('.oppositeShade');
+const oppR   = pageRight.querySelector('.oppositeShade');
 
 const slider = document.getElementById('slider');
 const fill   = document.getElementById('fill');
@@ -45,19 +47,15 @@ const hintR = document.getElementById('edge-right');
 const dragLeft  = document.getElementById('drag-left');
 const dragRight = document.getElementById('drag-right');
 
-/* Modo de inicio (portada/pliego) */
-const START_MODE = (book.dataset.start || 'cover').toLowerCase();     // 'cover' | 'spread'
+const START_MODE     = (book.dataset.start || 'cover').toLowerCase();       // 'cover' | 'spread'
 const INITIAL_SPREAD = (book.dataset.initialSpread || '2-3').toLowerCase(); // '1-2' | '2-3'
 
-/* Estado de vista */
 let view = { mode: 'cover', pairLeft: 2 };
-let pageAR = 2/3; // ancho/alto de UNA página (calculado)
+let pageAR = 2/3;
 
-/***********************
- * Util
- ***********************/
+/********* Util *********/
 const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
-const TOTAL = ()=> pages.length - 1; // páginas reales
+const TOTAL = ()=> pages.length - 1;
 
 function setPageARFrom(img){
   const w = img.naturalWidth||1000, h = img.naturalHeight||1500;
@@ -66,24 +64,21 @@ function setPageARFrom(img){
 }
 
 function applyBookARClass(){
-  // El libro siempre mantiene AR de spread; en portada solo ocultamos izquierda
   if (view.mode==='cover') book.classList.add('single');
   else                     book.classList.remove('single');
 }
 
-/* Detectar existencia */
 function exists(url){return new Promise(res=>{const i=new Image();i.onload=()=>res({ok:true,i,url});i.onerror=()=>res({ok:false,url});i.src=url})}
 async function findOne(n){
   for (const name of NAME_PATTERNS(n))
     for (const ext of EXT){
-      const u=PATH(`${name}.${ext}`);
-      const r=await exists(u);
+      const u=PATH(`${name}.${ext}`); const r=await exists(u);
       if(r.ok) return r;
     }
   return null;
 }
 
-/* ⚡ Preparación avanzada: fetch + createImageBitmap + ObjectURL + decode + LRU */
+/* precarga avanzada */
 const preparedURL = new Map();
 const preparedLRU = [];
 const PREP_LIMIT = 40;
@@ -108,43 +103,33 @@ async function prepareImage(url){
 }
 const getPreparedURL = url => preparedURL.get(url) || url;
 
-/***********************
- * Mapeo de vista -> índices
- ***********************/
+/********* Mapeo de vista *********/
 function indicesFromView(v){
   if (v.mode==='cover') return { left:null, right:1 };
   const L=v.pairLeft, R=L+1, N=TOTAL();
-  return { left: (L<=N?L:null), right: (R<=N?R:null) };
+  return { left:(L<=N?L:null), right:(R<=N?R:null) };
 }
 function nextViewFrom(v){
   const N=TOTAL();
-  if (v.mode==='cover'){
-    return { mode:'spread', pairLeft:2 };
-  } else {
-    const maxLeft = (N % 2 === 0) ? N-1 : N;
-    const newL = Math.min(v.pairLeft+2, maxLeft);
-    return { mode:'spread', pairLeft:newL };
-  }
+  if (v.mode==='cover') return { mode:'spread', pairLeft:2 };
+  const maxLeft = (N % 2 === 0) ? N-1 : N;
+  return { mode:'spread', pairLeft: Math.min(v.pairLeft+2, maxLeft) };
 }
 function prevViewFrom(v){
-  if (v.mode==='cover'){ return v; }
-  if (v.pairLeft<=2){ return { mode:'cover' }; }
+  if (v.mode==='cover') return v;
+  if (v.pairLeft<=2) return { mode:'cover' };
   return { mode:'spread', pairLeft:v.pairLeft-2 };
 }
 function canNext(){
   const N=TOTAL();
   if (N<=0) return false;
-  if (view.mode==='cover') return N>=2; // abrir a (2,3)
+  if (view.mode==='cover') return N>=2;
   const maxLeft = (N % 2 === 0) ? N-1 : N;
   return view.pairLeft < maxLeft;
 }
-function canPrev(){
-  return !(view.mode==='cover'); // siempre puedes volver a portada
-}
+function canPrev(){ return !(view.mode==='cover'); }
 
-/***********************
- * Render helpers
- ***********************/
+/********* Render helpers *********/
 function applySrc(img, url, spinner){
   if (!url){
     img.removeAttribute('src'); img.style.opacity=0; spinner.classList.add('hidden'); return;
@@ -158,13 +143,12 @@ function applySrc(img, url, spinner){
   if (img.complete && img.naturalWidth>0){ spinner.classList.add('hidden'); img.style.opacity=1; }
 }
 
-function paintStaticByIndices(leftIndex, rightIndex){
-  // Portada preview: oculta izquierda
+function paintStatic(leftIndex, rightIndex){
   if (leftIndex){
-    document.getElementById('page-left').style.display = '';
+    pageLeft.style.display = '';
     applySrc(imgL, pages[leftIndex], spinL);
   } else {
-    document.getElementById('page-left').style.display = 'none';
+    pageLeft.style.display = 'none';
     spinL.classList.add('hidden'); imgL.removeAttribute('src');
   }
   if (rightIndex){
@@ -176,9 +160,8 @@ function paintStaticByIndices(leftIndex, rightIndex){
 
 function updateUI(){
   const N = TOTAL();
-  const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2)); // pliegos desde (2,3)
+  const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2));
 
-  slider.max = spreads;
   if (view.mode==='cover'){ slider.value = 0; fill.style.width = '0%'; }
   else {
     const step = Math.max(1, Math.floor((view.pairLeft-2)/2)+1);
@@ -186,6 +169,7 @@ function updateUI(){
     const pct = spreads>0 ? (slider.value / spreads) * 100 : 0;
     fill.style.width = (isFinite(pct)?pct:0)+'%';
   }
+  slider.max = spreads;
 
   const atCover = (view.mode==='cover');
   const atEnd   = (view.mode==='spread') && !canNext();
@@ -194,24 +178,21 @@ function updateUI(){
   btnFirst.disabled = atCover;
   btnNext.disabled  = atEnd;
   btnLast.disabled  = atEnd;
+  hintL.disabled    = atCover;
+  hintR.disabled    = atEnd;
 
-  hintL.disabled = atCover;
-  hintR.disabled = atEnd;
-
-  // En portada, desactiva arrastre izquierdo
   dragLeft.style.pointerEvents = atCover ? 'none' : 'auto';
 }
 
 function render(){
   applyBookARClass();
   const {left,right} = indicesFromView(view);
-  paintStaticByIndices(left, right);
+  paintStatic(left, right);
+  oppL.style.opacity = 0; oppR.style.opacity = 0;
   updateUI();
 }
 
-/***********************
- * Overlay y animación
- ***********************/
+/********* Overlay y animación *********/
 function makeTurnOverlay(direction){
   const turn = document.createElement('div');
   turn.className = 'turn';
@@ -229,34 +210,22 @@ function makeTurnOverlay(direction){
 
   const shade = document.createElement('div'); shade.className='turnShade';
 
-  // Caras en función del estado ACTUAL (antes de cambiar view)
-  const N=TOTAL();
+  const cur   = indicesFromView(view);
+  const nextV = nextViewFrom(view);
+  const prevV = prevViewFrom(view);
+  const nextI = indicesFromView(nextV);
+  const prevI = indicesFromView(prevV);
+
   if (direction==='forward'){
-    if (view.mode==='cover'){
-      fR.src = getPreparedURL(pages[1] || '');
-      bL.src = getPreparedURL(pages[2] || '');
-      fL.style.opacity=0; bR.style.opacity=0;
-    } else {
-      const curR = view.pairLeft + 1;
-      const nextL= view.pairLeft + 2;
-      fR.src = getPreparedURL(pages[curR] || '');
-      bL.src = getPreparedURL(pages[nextL] || '');
-      fL.style.opacity=0; bR.style.opacity=0;
-    }
-  } else { // backward
-    if (view.mode==='spread' && view.pairLeft<=2){
-      fL.src = getPreparedURL(pages[2] || '');
-      bR.src = getPreparedURL(pages[1] || '');
-      fR.style.opacity=0; bL.style.opacity=0;
-    } else if (view.mode==='spread'){
-      const curL = view.pairLeft;
-      const prevR= view.pairLeft - 1;
-      fL.src = getPreparedURL(pages[curL] || '');
-      bR.src = getPreparedURL(pages[prevR] || '');
-      fR.style.opacity=0; bL.style.opacity=0;
-    } else {
-      // cover hacia atrás no aplica
-    }
+    // 4 caras: Lcur (estática), overlay: front=Rcur, back=Lnext, estática derecha=Rnext
+    fR.src = getPreparedURL(pages[cur.right]  || '');
+    bL.src = getPreparedURL(pages[nextI.left] || '');
+    fL.style.opacity=0; bR.style.opacity=0;
+  } else {
+    // Atrás: overlay front=Lcur, back=Rprev  (estáticas: izq=Lprev, der=Rcur)
+    fL.src = getPreparedURL(pages[cur.left]  || '');
+    bR.src = getPreparedURL(pages[prevI.right] || '');
+    fR.style.opacity=0; bL.style.opacity=0;
   }
 
   turn.append(front, back, shade);
@@ -264,16 +233,26 @@ function makeTurnOverlay(direction){
   return {turn, shade};
 }
 
-function setTurnDeg(turnEl, shadeEl, deg){
+function setTurnDeg(turnEl, shadeEl, deg, direction){
   turnEl.style.transform = `rotateY(${deg}deg)`;
   const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
   shadeEl.style.opacity = 0.50 * k;
+
+  // oscurecimiento del lado de aterrizaje
+  const land = Math.max(0, (Math.abs(deg)-90)/90); // 0 cuando ~vertical, 1 al cerrar
+  if (direction==='forward'){         // cae a la izquierda
+    oppL.style.opacity = 0.35 * land;
+    oppR.style.opacity = 0;
+  } else {                            // cae a la derecha
+    oppR.style.opacity = 0.35 * land;
+    oppL.style.opacity = 0;
+  }
 }
 
 function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
   if (isAnimating) return;
   isAnimating = true;
-  book.classList.remove('dragging');
+  book.classList.add('dragging');
 
   const {turn, shade} = makeTurnOverlay(direction);
   const t0 = performance.now();
@@ -281,65 +260,73 @@ function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
   function frame(now){
     const t = Math.min(1,(now-t0)/ms);
     const d = fromDeg + (toDeg-fromDeg)*easeInOut(t);
-    setTurnDeg(turn, shade, d);
+    setTurnDeg(turn, shade, d, direction);
     if(t<1) requestAnimationFrame(frame);
     else{
       Promise.resolve(gatePromise).then(()=>{
-        turn.remove(); isAnimating = false; onDone && onDone();
+        turn.remove(); isAnimating = false;
+        oppL.style.opacity = 0; oppR.style.opacity = 0;
+        book.classList.remove('dragging');
+        onDone && onDone();
       });
     }
   }
   requestAnimationFrame(frame);
 }
 
-/***********************
- * PREVIEW inmediato (fondo cambia al empezar)
- ***********************/
-function previewStatic(direction){
-  const nextV = direction==='forward' ? nextViewFrom(view) : prevViewFrom(view);
-  const idxs  = indicesFromView(nextV);
-  // Mostrar ya el fondo del destino (izquierda puede “no existir” en portada)
-  if (nextV.mode==='cover') book.classList.add('single'); else book.classList.remove('single');
-  paintStaticByIndices(idxs.left, idxs.right);
-  return nextV; // para commit si se confirma
+/********* PREVIEW de fondo (solo lado de destino) *********/
+function previewStaticsFor(direction){
+  const cur = indicesFromView(view);
+
+  if (direction==='forward'){
+    const nextV = nextViewFrom(view);
+    const nextI = indicesFromView(nextV);
+
+    // mostrar ya el destino en la DERECHA (Rnext),
+    // mantener la IZQUIERDA como Lcur (si es portada, nace con page1)
+    book.classList.remove('single'); // abrir si venimos de portada
+    const leftIdx  = cur.left || cur.right;  // portada: usa page1 a la izquierda
+    const rightIdx = nextI.right;
+    paintStatic(leftIdx, rightIdx);
+    return nextV;
+  } else {
+    const prevV = prevViewFrom(view);
+    const prevI = indicesFromView(prevV);
+
+    // mostrar ya el destino en la IZQUIERDA (Lprev),
+    // mantener la DERECHA como Rcur
+    book.classList.remove('single'); // mientras gira, mantenemos spread
+    const leftIdx  = prevI.left;
+    const rightIdx = cur.right;
+    paintStatic(leftIdx, rightIdx);
+    return prevV;
+  }
 }
 
-/***********************
- * Navegación
- ***********************/
+/********* Navegación *********/
 function goNext(){
   if (!canNext() || isAnimating) return;
 
-  // Prepara recursos de destino
+  const curL = indicesFromView(view).left ?? 1;
   const gate = (view.mode==='cover')
     ? Promise.all([ prepareImage(pages[2]), prepareImage(pages[3]) ])
-    : Promise.all([ prepareImage(pages[view.pairLeft+2]), prepareImage(pages[view.pairLeft+3]) ]);
+    : Promise.all([ prepareImage(pages[curL+2]), prepareImage(pages[curL+3]) ]);
 
-  // PREVIEW de fondo inmediato
-  const nextV = previewStatic('forward');
-
-  // Anima la hoja actual saliente
-  animateTurn('forward', 0, -180, FLIP_MS, gate, ()=>{
-    view = nextV; // commit
-    render();
-  });
+  const nextV = previewStaticsFor('forward');
+  animateTurn('forward', 0, -180, FLIP_MS, gate, ()=>{ view = nextV; render(); });
 }
 function goPrev(){
   if (!canPrev() || isAnimating) return;
 
+  const curL = indicesFromView(view).left ?? 2;
   const gate = (view.mode==='spread' && view.pairLeft<=2)
     ? Promise.all([ prepareImage(pages[1]) ])
-    : (view.mode==='spread'
-        ? Promise.all([ prepareImage(pages[view.pairLeft-2]), prepareImage(pages[view.pairLeft-1]) ])
-        : Promise.resolve());
+    : Promise.all([ prepareImage(pages[curL-2]), prepareImage(pages[curL-1]) ]);
 
-  const prevV = previewStatic('backward');
-
-  animateTurn('backward', 0, 180, FLIP_MS, gate, ()=>{
-    view = prevV;
-    render();
-  });
+  const prevV = previewStaticsFor('backward');
+  animateTurn('backward', 0, 180, FLIP_MS, gate, ()=>{ view = prevV; render(); });
 }
+
 function goFirst(){
   if (isAnimating) return;
   if (START_MODE==='cover'){ view={mode:'cover'}; }
@@ -349,14 +336,12 @@ function goFirst(){
 function goLast(){
   if (isAnimating) return;
   const N = TOTAL(); if (N<=0) return;
-  if (N % 2 === 1){ view={mode:'spread', pairLeft:N}; }  // (n, null)
-  else            { view={mode:'spread', pairLeft:N-1}; } // (n-1, n)
+  if (N % 2 === 1){ view={mode:'spread', pairLeft:N}; }
+  else            { view={mode:'spread', pairLeft:N-1}; }
   render();
 }
 
-/***********************
- * Controles / entrada
- ***********************/
+/********* Controles *********/
 btnNext.addEventListener('click', goNext);
 btnPrev.addEventListener('click', goPrev);
 btnFirst.addEventListener('click', goFirst);
@@ -367,7 +352,7 @@ document.addEventListener('keydown', e=>{
   if(e.key==='ArrowLeft')  goPrev();
 });
 
-/* Click simple: mitad izq/der */
+/* Click simple dentro del libro */
 book.addEventListener('click', (e)=>{
   if (isAnimating || suppressClick) return;
   const rect = book.getBoundingClientRect();
@@ -375,7 +360,7 @@ book.addEventListener('click', (e)=>{
   if (e.clientX < centerX) goPrev(); else goNext();
 });
 
-/* Rueda del mouse con throttle y sin salirse de límites */
+/* Rueda del mouse */
 book.addEventListener('wheel', (e)=>{
   e.preventDefault();
   if (isAnimating) return;
@@ -386,9 +371,7 @@ book.addEventListener('wheel', (e)=>{
   wheelLockUntil = now + WHEEL_THROTTLE_MS;
 }, { passive:false });
 
-/***********************
- * Drag por BORDE (vertical completo, estrecho)
- ***********************/
+/********* Drag por borde *********/
 let drag = null; // {dir, overlay, shade, rect, startX, t, deg, pointerId, preview}
 
 function startDrag(side, e){
@@ -402,8 +385,8 @@ function startDrag(side, e){
   const pointerId = e.pointerId;
   const dir = (side==='right') ? 'forward' : 'backward';
 
-  // PREVIEW inmediato del fondo
-  const targetV = previewStatic(dir);
+  // preview de fondo (solo lado de destino)
+  const targetV = previewStaticsFor(dir);
 
   const {turn, shade} = makeTurnOverlay(dir);
   const rect = book.getBoundingClientRect();
@@ -411,8 +394,7 @@ function startDrag(side, e){
 
   e.currentTarget.setPointerCapture && e.currentTarget.setPointerCapture(pointerId);
 
-  setTurnDeg(turn, shade, dir==='forward' ? -8 : 8);
-
+  setTurnDeg(turn, shade, dir==='forward' ? -8 : 8, dir);
   drag = { dir, overlay:turn, shade, rect, startX, t:0, deg:0, pointerId, preview:targetV };
 }
 function moveDrag(e){
@@ -422,18 +404,13 @@ function moveDrag(e){
   const center = rect.left + rect.width/2;
 
   let t;
-  if (dir==='forward'){ // borde derecho -> centro
-    const from = rect.right; const to = center;
-    t = Math.min(1, Math.max(0, (from - x) / (from - to)));
-  } else {              // borde izquierdo -> centro
-    const from = rect.left; const to = center;
-    t = Math.min(1, Math.max(0, (x - from) / (to - from)));
-  }
+  if (dir==='forward'){ t = Math.min(1, Math.max(0, (rect.right - x) / (rect.right - center))); }
+  else               { t = Math.min(1, Math.max(0, (x - rect.left) / (center - rect.left))); }
   drag.t = t;
 
   const deg = (dir==='forward') ? -180*t : 180*t;
   drag.deg = deg;
-  setTurnDeg(drag.overlay, drag.shade, deg);
+  setTurnDeg(drag.overlay, drag.shade, deg, dir);
 }
 function endDrag(e){
   if (!drag) return;
@@ -443,13 +420,12 @@ function endDrag(e){
   try{ e.currentTarget.releasePointerCapture && e.currentTarget.releasePointerCapture(pointerId); }catch{}
 
   if (t>DRAG_COMPLETE_T){
+    const curL = indicesFromView(view).left ?? (dir==='forward'?1:2);
     const gate = (dir==='forward')
-      ? (view.mode==='cover'
-          ? Promise.all([ prepareImage(pages[2]), prepareImage(pages[3]) ])
-          : Promise.all([ prepareImage(pages[view.pairLeft+2]), prepareImage(pages[view.pairLeft+3]) ]))
+      ? Promise.all([ prepareImage(pages[curL+2]), prepareImage(pages[curL+3]) ])
       : (view.mode==='spread' && view.pairLeft<=2
           ? Promise.all([ prepareImage(pages[1]) ])
-          : Promise.all([ prepareImage(pages[view.pairLeft-2]), prepareImage(pages[view.pairLeft-1]) ]));
+          : Promise.all([ prepareImage(pages[curL-2]), prepareImage(pages[curL-1]) ]));
 
     const ms = FLIP_MS_DRAG_DONE, from = deg, to = (dir==='forward') ? -180 : 180;
     isAnimating = true;
@@ -457,41 +433,39 @@ function endDrag(e){
     function frame(now){
       const k = Math.min(1,(now-t0)/ms);
       const d = from + (to-from)*easeInOut(k);
-      setTurnDeg(overlay, shade, d);
+      setTurnDeg(overlay, shade, d, dir);
       if (k<1) requestAnimationFrame(frame);
       else {
         Promise.resolve(gate).then(()=>{
           overlay.remove(); isAnimating=false;
-          view = preview; // commit definitivo del destino
+          oppL.style.opacity = 0; oppR.style.opacity = 0;
           book.classList.remove('dragging');
-          render();
+          view = preview; render();
         });
       }
     }
     requestAnimationFrame(frame);
   } else {
-    // Cancelar → volver a la vista original
     const ms = FLIP_MS_RETURN, from = deg, to = 0;
     isAnimating = true;
     const t0 = performance.now();
     function frame(now){
       const k = Math.min(1,(now-t0)/ms);
       const d = from + (to-from)*easeInOut(k);
-      setTurnDeg(overlay, shade, d);
+      setTurnDeg(overlay, shade, d, dir);
       if (k<1) requestAnimationFrame(frame);
       else {
-        overlay.remove(); isAnimating=false; book.classList.remove('dragging');
-        // volver a vista original
+        overlay.remove(); isAnimating=false;
+        oppL.style.opacity = 0; oppR.style.opacity = 0;
+        book.classList.remove('dragging');
         render();
       }
     }
     requestAnimationFrame(frame);
   }
-
   setTimeout(()=>{ suppressClick=false; }, 80);
 }
 
-/* Listeners drag (borde) */
 for (const el of [dragLeft, dragRight]){
   el.addEventListener('pointerdown', e=>{
     const side = (e.currentTarget===dragRight) ? 'right' : 'left';
@@ -502,9 +476,7 @@ for (const el of [dragLeft, dragRight]){
   el.addEventListener('pointercancel', endDrag);
 }
 
-/***********************
- * Fullscreen
- ***********************/
+/********* Fullscreen *********/
 btnFS.addEventListener('click', ()=>{
   const entering = btnFS.dataset.state!=='exit';
   const t = viewer;
@@ -517,16 +489,13 @@ document.addEventListener('fullscreenchange', ()=>{
   btnFS.textContent   = fs ? '⤡'  : '⤢';
 });
 
-/***********************
- * Slider → navega por pliegos (sin salirse)
- ***********************/
+/********* Slider *********/
 slider.addEventListener('input', ()=>{
   const N = TOTAL();
   const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2));
   let target = Math.min(spreads, Math.max(0, parseInt(slider.value,10)));
 
   if (target===0){
-    // portada o primer spread según flags
     if (START_MODE==='cover') view={mode:'cover'};
     else view={mode:'spread', pairLeft:(INITIAL_SPREAD==='1-2')?1:2};
   } else {
@@ -537,40 +506,25 @@ slider.addEventListener('input', ()=>{
   render();
 });
 
-/***********************
- * Init (detección de assets)
- ***********************/
+/********* Init *********/
 (async function init(){
   const map=[]; let firstImg=null, found=false, misses=0;
   for(let n=1;n<=MAX_PAGES;n++){
     const r = await findOne(n);
-    if(r){
-      map[n]=r.url; misses=0;
-      if(!firstImg){ firstImg=r.i; }
-      found=true;
-    } else if(found){
-      map[n]=null; misses++;
-      if(misses>=6) break;
-    }
+    if(r){ map[n]=r.url; misses=0; if(!firstImg){ firstImg=r.i; } found=true; }
+    else if(found){ map[n]=null; if(++misses>=6) break; }
   }
-  // última existente (truthy)
   let last=0; for(let i=map.length-1;i>=1;i--) if(map[i]){ last=i; break; }
-  pages = Array.from({length:last+1},(_,i)=>map[i]||null); // 0..last; páginas reales 1..last
+  pages = Array.from({length:last+1},(_,i)=>map[i]||null);
 
   if (firstImg){ setPageARFrom(firstImg); }
 
-  // Estado inicial según flags
-  if (START_MODE==='cover'){
-    view={mode:'cover'};
-  } else {
-    view={mode:'spread', pairLeft: (INITIAL_SPREAD==='1-2') ? 1 : 2};
-  }
+  if (START_MODE==='cover'){ view={mode:'cover'}; }
+  else { view={mode:'spread', pairLeft: (INITIAL_SPREAD==='1-2') ? 1 : 2}; }
 
-  // Semilla de preparación
   const seedIdx = [1,2,3,4,5].filter(i => i<=TOTAL());
   await Promise.all(seedIdx.map(i=>prepareImage(pages[i])));
 
-  // Flechas guía
   hintL.addEventListener('click', ()=>{ if (canPrev()) goPrev(); });
   hintR.addEventListener('click', ()=>{ if (canNext()) goNext(); });
 

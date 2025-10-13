@@ -17,19 +17,16 @@
       <button id="btn-last"  class="icon" title="Última">≫</button>
     </div>
 
-    <!-- Libro + barra (centrados) -->
     <div class="stack">
-      <!-- Ajusta aquí el modo de inicio -->
       <!-- data-start="cover" | "spread"  +  data-initial-spread="1-2"|"2-3" -->
       <section id="book" class="book"
         data-start="cover"
         data-initial-spread="2-3"
         aria-label="Flipbook">
 
-        <!-- Si no quieres viñeta estática, ocúltala con .gutter{display:none} -->
         <span class="gutter"></span>
 
-        <!-- IZQUIERDA (estática) -->
+        <!-- Izquierda (estática) -->
         <div id="page-left" class="page left">
           <div class="sheet">
             <img id="img-left" alt="">
@@ -41,7 +38,7 @@
           <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- DERECHA (estática) -->
+        <!-- Derecha (estática) -->
         <div id="page-right" class="page right">
           <div class="sheet">
             <img id="img-right" alt="">
@@ -53,12 +50,12 @@
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Franja de ARRASTRE por BORDE (vertical completa, reducida) -->
+        <!-- Arrastre por borde (vertical estrecho) -->
         <div id="drag-left"  class="drag-zone left"  aria-label="Arrastrar atrás"></div>
         <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
       </section>
 
-      <!-- Barra inferior (más baja para no interferir) -->
+      <!-- Barra inferior (separada para no interferir) -->
       <nav class="bar">
         <div class="bar-box">
           <div class="rail">

@@ -1,7 +1,6 @@
 :root{
-  /* AR base: el JS seteará --page-ar; el libro usa siempre AR de spread */
   --page-ar: 2/3;                            /* ancho/alto de UNA página */
-  --book-ar: calc(2 * var(--page-ar));       /* spread = dos páginas lado a lado */
+  --book-ar: calc(2 * var(--page-ar));       /* spread (dos páginas) */
 
   --radius: 16px;
   --shadow: 0 18px 55px rgba(0,0,0,.18);
@@ -41,14 +40,15 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 .stack{display:flex;flex-direction:column;align-items:center;gap:28px;width:100%}
 
-/* Libro: SIEMPRE usa AR de spread; en portada la izquierda no existe */
+/* Libro: AR de spread; en portada oculto .left */
 .book{
   position:relative;width:min(96vw,1280px);aspect-ratio:var(--book-ar);
   background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
   overflow:hidden;perspective:2200px
 }
-/* Durante drag, no recortar para que no se corte la hoja */
-.book.dragging{ overflow:visible; }
+.book.dragging{ overflow:visible; } /* para que no se corte la hoja en drag */
+
+.book.single .page.left{ display:none; }
 
 .gutter{
   position:absolute;inset:0;z-index:1;pointer-events:none;
@@ -65,29 +65,26 @@ button{border:0;background:none;padding:0;cursor:pointer}
   z-index:2; transform-style:preserve-3d;
 }
 .page.turning{ z-index:7 }
-.page.left  { left:0;  right:auto; transform-origin:right center }
-.page.right { right:0; left:auto;  transform-origin:left  center }
-
-/* En portada, la izquierda no existe; la derecha sigue ocupando su mitad derecha */
-.book.single .page.left{ display:none; }
+.page.left  { left:0;  transform-origin:right center }
+.page.right { right:0; transform-origin:left  center }
 
 .sheet{ position:absolute; inset:0; width:100%; height:100%;
   backface-visibility:hidden; transform-style:preserve-3d; will-change:transform }
 .sheet img{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#fff; opacity:0; transition:opacity .18s ease }
 .sheet .back{ content:""; position:absolute; inset:0; background:#fff; transform:rotateY(180deg); backface-visibility:hidden }
-.sheet .edge{ position:absolute; top:0; bottom:0; width:3px; left:auto; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd); transform:translateZ(0.5px) }
+.sheet .edge{ position:absolute; top:0; bottom:0; width:3px; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd); transform:translateZ(0.5px) }
 .page.left .sheet .edge{ left:0; right:auto }
 .sheet .foldShade{ position:absolute; inset:0; pointer-events:none; opacity:0; background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
 .page.left .sheet .foldShade{ background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
 .oppositeShade{ position:absolute; inset:0; pointer-events:none; opacity:0;
-  background:radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.25), transparent 60%) }
+  background:radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.28), transparent 62%) }
 
-/* Franja de ARRASTRE por BORDE (vertical completa, más estrecha ~9%) */
+/* Arrastre por borde */
 .drag-zone{
   position:absolute; top:0; height:100%; width:9%;
   z-index:8; opacity:0; cursor:ew-resize; touch-action:none;
 }
-.drag-zone.left  { left:0;  }
+.drag-zone.left  { left:0; }
 .drag-zone.right { right:0; }
 
 /* Loader por página */
@@ -102,7 +99,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .spinner.hidden{ opacity:0; transform:translate(-50%,-50%) scale(.9); pointer-events:none }
 @keyframes spin { to { transform:translate(-50%,-50%) rotate(360deg) } }
 
-/* Barra inferior (más baja para no interferir con el overlay) */
+/* Barra inferior (baja) */
 .bar{width:100%;display:flex;justify-content:center; margin-top:-4px; }
 .bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:12px 12px 14px}
 .rail{ position:relative;width:min(96vw,1280px);height:18px;border-radius:999px;background:var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08) }
@@ -122,7 +119,6 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 /* ============ HOJA OVERLAY (flip único) ============ */
 .turn{
-  /* ampliamos el canvas del overlay para que no se "corte" en bordes */
   position:absolute; inset:-24px; z-index:9; pointer-events:none;
   transform-style:preserve-3d;
 }
@@ -136,20 +132,20 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .turn .half.left{ grid-column:1 }
 .turn .half.right{ grid-column:2 }
 
-/* ⭐ Sombra del pliegue SOLO sobre la hoja que gira (media anchura) */
+/* Sombra del pliegue sólo en la hoja que gira */
 .turn .turnShade{
   position:absolute; top:24px; bottom:24px; width:50%;
-  left:calc(50% + 24px); /* por defecto mitad derecha (R→L) */
+  left:calc(50% + 24px); /* R→L por defecto */
   pointer-events:none; opacity:0;
   background:
     radial-gradient(60% 140% at 50% 50%, rgba(0,0,0,.20), transparent 60%),
     linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
 }
-.turn.backward .turnShade{ left:24px; transform:scaleX(-1); } /* L→R */
+.turn.backward .turnShade{ left:24px; transform:scaleX(-1); }
 
-/* Flechas de guía (alineadas con la anchura de libro/barra) */
+/* Flechas-guía */
 .edge-hint{
-  position:fixed; bottom:62px; z-index:11; /* 62px para que "vivan" con la barra */
+  position:fixed; bottom:62px; z-index:11;
   width:44px; height:44px; border-radius:999px;
   background:var(--tc-bg); color:#111; box-shadow:var(--tc-shadow);
   display:grid; place-items:center; font-size:26px; line-height:1;
