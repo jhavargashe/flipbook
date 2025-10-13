@@ -68,77 +68,8 @@ async function findOne(n){
 }
 
 /***********************
- * z-index dinámico del lado activo
+ * Render base (páginas estáticas + loaders)
  ***********************/
-function beginTurn(side){
-  left.classList.remove('turning');
-  right.classList.remove('turning');
-  if (side==='right') right.classList.add('turning');
-  else                left.classList.add('turning');
-}
-function endTurn(){
-  left.classList.remove('turning');
-  right.classList.remove('turning');
-}
-
-/***********************
- * Render/UI + loaders
- ***********************/
-function setSheetTransform(side, deg){
-  const page  = side==='right' ? right : left;
-  const sheet = page.querySelector('.sheet');
-  sheet.style.transform = `rotateY(${side==='right' ? -deg : deg}deg)`;
-
-  const fold = page.querySelector('.foldShade');
-  const opp  = page.querySelector('.oppositeShade');
-  const k = Math.sin(Math.min(Math.PI, (deg/180)*Math.PI)); // 0..1..0
-  fold.style.opacity = 0.55 * k;
-  opp.style.opacity  = 0.38 * k;
-
-  const edge = page.querySelector('.edge');
-  edge.style.opacity = 0.75 - 0.5*k;
-}
-
-function relax(side, toDeg, ms=520, done){
-  if (isAnimating) return;
-  isAnimating = true;
-  beginTurn(side);
-
-  const page = side==='right'?right:left;
-  const sheet = page.querySelector('.sheet');
-  const from = (()=> {
-    const m = sheet.style.transform.match(/rotateY\((-?[\d.]+)deg\)/);
-    if(!m) return 0;
-    return Math.abs(parseFloat(m[1]));
-  })();
-
-  const start = performance.now();
-  function frame(now){
-    const t = Math.min(1,(now-start)/ms);
-    const d = from + (toDeg-from)*easeInOut(t);
-    setSheetTransform(side, d);
-    if (t<1) requestAnimationFrame(frame);
-    else { isAnimating=false; endTurn(); done && done(); }
-  }
-  requestAnimationFrame(frame);
-}
-
-function updateUI(){
-  const spreads = Math.ceil(pages.length/2);
-  slider.max = Math.max(0, spreads-1);
-  slider.value = Math.floor(idx/2);
-  const pct = spreads>1 ? (slider.value/(spreads-1))*100 : 0;
-  fill.style.width = (isFinite(pct)?pct:0)+'%';
-
-  const atStart = idx<=0;
-  const atEnd   = idx+2>=pages.length;
-  btnPrev.disabled = atStart;
-  btnNext.disabled = atEnd;
-  btnFirst.disabled= atStart;
-  btnLast.disabled = atEnd;
-}
-
-/* Loader por lado */
 function applySrc(img, url, spinner){
   if (!url){
     img.removeAttribute('src');
@@ -154,6 +85,21 @@ function applySrc(img, url, spinner){
   if (img.complete && img.naturalWidth>0){ spinner.classList.add('hidden'); img.style.opacity=1; }
 }
 
+function updateUI(){
+  const spreads = Math.ceil(pages.length/2);
+  slider.max   = Math.max(0, spreads-1);
+  slider.value = Math.floor(idx/2);
+  const pct = spreads>1 ? (slider.value/(spreads-1))*100 : 0;
+  fill.style.width = (isFinite(pct)?pct:0)+'%';
+
+  const atStart = idx<=0;
+  const atEnd   = idx+2>=pages.length;
+  btnPrev.disabled  = atStart;
+  btnFirst.disabled = atStart;
+  btnNext.disabled  = atEnd;
+  btnLast.disabled  = atEnd;
+}
+
 function render(){
   if(!pages.length){
     imgL.removeAttribute('src'); imgR.removeAttribute('src');
@@ -163,40 +109,113 @@ function render(){
   idx = clampPair(idx, pages.length);
   applySrc(imgL, pages[idx]   || '', spinL);
   applySrc(imgR, pages[idx+1] || '', spinR);
-
-  setSheetTransform('left',  0);
-  setSheetTransform('right', 0);
-  endTurn();
   updateUI();
 }
 
 /***********************
- * Navegación (ahora con beginTurn/endTurn)
+ * Hoja overlay (flip único que cruza el libro)
+ ***********************/
+function makeTurnOverlay({dir}) {
+  // dir = 'forward' o 'backward'
+  // Estructura:
+  // <div class="turn">
+  //   <div class="face front">  <img class="half left"> <img class="half right"> </div>
+  //   <div class="face back">   <img class="half left"> <img class="half right"> </div>
+  //   <div class="turnShade"></div>
+  // </div>
+  const turn = document.createElement('div');
+  turn.className = 'turn';
+  turn.style.transformOrigin = '50% 50%'; // lomo
+
+  const front = document.createElement('div'); front.className='face front';
+  const back  = document.createElement('div'); back.className='face back';
+  const fL = document.createElement('img'); fL.className='half left';
+  const fR = document.createElement('img'); fR.className='half right';
+  const bL = document.createElement('img'); bL.className='half left';
+  const bR = document.createElement('img'); bR.className='half right';
+  front.append(fL,fR); back.append(bL,bR);
+
+  const shade = document.createElement('div'); shade.className='turnShade';
+
+  // Asignamos imágenes
+  if (dir==='forward'){
+    // Cara (0°): derecha actual; dorso (180°): próxima izquierda
+    fR.src = pages[idx+1] || '';
+    fL.style.opacity = 0; // transparente (no tapa la izquierda base)
+    bL.src = pages[idx+2] || '';
+    bR.style.opacity = 0;
+  } else {
+    // Cara (0°): izquierda actual; dorso (180°): derecha anterior
+    fL.src = pages[idx]   || '';
+    fR.style.opacity = 0;
+    bR.src = pages[idx-1] || '';
+    bL.style.opacity = 0;
+  }
+
+  turn.append(front, back, shade);
+  book.appendChild(turn);
+  return { turn, shade };
+}
+
+function setTurnDeg(turnEl, shadeEl, deg){
+  // deg: 0 → ±180
+  turnEl.style.transform = `rotateY(${deg}deg)`;
+  const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
+  shadeEl.style.opacity = 0.50 * k;
+}
+
+function animateTurn({dir, onDone}){
+  if (isAnimating) return;
+  isAnimating = true;
+
+  const {turn, shade} = makeTurnOverlay({dir});
+
+  // Inicia desde 0°: cara visible
+  let from=0, to=(dir==='forward' ? -180 : 180), ms=620;
+  const t0 = performance.now();
+
+  function frame(now){
+    const t = Math.min(1,(now-t0)/ms);
+    const d = from + (to-from)*easeInOut(t);
+    setTurnDeg(turn, shade, d);
+    if(t<1) requestAnimationFrame(frame);
+    else{
+      turn.remove();
+      isAnimating = false;
+      onDone && onDone();
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+/***********************
+ * Navegación (usa el flip único)
  ***********************/
 function next(){
   if (isAnimating || idx+2>=pages.length) return;
-  relax('right', 180, 560, ()=>{ idx+=2; render(); });
+  // Preload por si acaso
+  if (pages[idx+2]) { const i=new Image(); i.src=pages[idx+2]; }
+  animateTurn({dir:'forward', onDone:()=>{ idx+=2; render(); }});
 }
 function prev(){
   if (isAnimating || idx<=0) return;
-  relax('left', 180, 560, ()=>{ idx-=2; render(); });
+  if (pages[idx-1]) { const i=new Image(); i.src=pages[idx-1]; }
+  animateTurn({dir:'backward', onDone:()=>{ idx-=2; render(); }});
 }
-function first(){ if(idx>0){ idx=0; render(); } }
-function last(){ const lastPair = clampPair(pages.length-2, pages.length); idx=lastPair; render(); }
+function first(){ if(!isAnimating && idx>0){ idx=0; render(); } }
+function last(){ if(isAnimating) return; const lastPair = clampPair(pages.length-2, pages.length); idx=lastPair; render(); }
 
 /***********************
- * Drag desde la esquina
+ * Drag desde esquina → dispara flip
  ***********************/
 function startDrag(side, e){
   if (isAnimating) return;
-  beginTurn(side);
   const rect = book.getBoundingClientRect();
   drag = {
     side,
     startX: e.clientX || (e.touches && e.touches[0].clientX) || 0,
-    rect
+    rect, t:0
   };
-  setSheetTransform(side, 10);
 }
 function moveDrag(e){
   if (!drag) return;
@@ -205,25 +224,15 @@ function moveDrag(e){
   const half = rect.width/2;
   const center = rect.left + half;
   let t;
-
-  if (side==='right'){
-    t = Math.min(1, Math.max(0, (center - x)/half));
-    setSheetTransform('right', t*180);
-  }else{
-    t = Math.min(1, Math.max(0, (x - center)/half));
-    setSheetTransform('left', t*180);
-  }
+  if (side==='right'){ t = Math.min(1, Math.max(0, (center - x)/half)); }
+  else               { t = Math.min(1, Math.max(0, (x - center)/half)); }
   drag.t = t;
 }
 function endDrag(){
   if (!drag) return;
-  const {side, t} = drag;
-  drag = null;
-  if (t>0.5){
-    if (side==='right'){ relax('right', 180, 420, ()=>{ idx+=2; render(); }); }
-    else               { relax('left',  180, 420, ()=>{ idx-=2; render(); }); }
-  }else{
-    relax(side, 0, 360, ()=>{ /* no cambio de spread */ });
+  const {side, t} = drag; drag=null;
+  if (t>0.45){
+    if (side==='right') next(); else prev();
   }
 }
 
@@ -260,7 +269,7 @@ document.addEventListener('fullscreenchange', ()=>{
 });
 
 /***********************
- * Init (detección)
+ * Init (detección de assets)
  ***********************/
 (async function init(){
   if (AUTO_DETECT){
