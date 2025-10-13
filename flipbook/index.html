@@ -11,20 +11,25 @@
     <!-- Botonera superior (derecha) -->
     <div class="top-controls" aria-label="Controles">
       <button id="btn-first" class="icon" title="Primera">≪</button>
-      <button id="btn-prev"  class="icon" title="Anterior">〈</button>
-      <button id="btn-grid"  class="icon" title="Vista mosaico">▦</button>
+      <button id="btn-prev"  class="icon" title="Atrás">〈</button>
       <button id="btn-fs"    class="icon" title="Pantalla completa" data-state="enter">⤢</button>
-      <button id="btn-next"  class="icon" title="Siguiente">〉</button>
+      <button id="btn-next"  class="icon" title="Adelante">〉</button>
       <button id="btn-last"  class="icon" title="Última">≫</button>
     </div>
 
     <!-- Libro + barra (centrados) -->
     <div class="stack">
-      <section id="book" class="book" aria-label="Flipbook">
+      <!-- ⚙️ Configuración de inicio vía data-attributes -->
+      <!-- data-start="cover" | "spread"  +  data-initial-spread="1-2"|"2-3" -->
+      <section id="book" class="book"
+        data-start="cover"
+        data-initial-spread="2-3"
+        aria-label="Flipbook">
+
         <!-- Si no quieres viñeta estática: ocúltala con .gutter{display:none} en CSS -->
         <span class="gutter"></span>
 
-        <!-- Izquierda (estática) -->
+        <!-- IZQUIERDA (estática) -->
         <div id="page-left" class="page left">
           <div class="sheet">
             <img id="img-left" alt="">
@@ -36,7 +41,7 @@
           <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Derecha (estática) -->
+        <!-- DERECHA (estática) -->
         <div id="page-right" class="page right">
           <div class="sheet">
             <img id="img-right" alt="">
@@ -48,9 +53,9 @@
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Zonas de esquina para drag (opcional) -->
-        <button id="corner-L" class="corner left"  aria-label="Arrastrar atrás"></button>
-        <button id="corner-R" class="corner right" aria-label="Arrastrar adelante"></button>
+        <!-- Zonas de ARRASTRE por BORDE (vertical completo) -->
+        <div id="drag-left"  class="drag-zone left"  aria-label="Arrastrar atrás"></div>
+        <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
       </section>
 
       <!-- Barra inferior -->
@@ -64,7 +69,7 @@
       </nav>
     </div>
 
-    <!-- Flechas-guía laterales (fuera del libro, parte inferior) -->
+    <!-- Flechas-guía laterales (fuera del libro) -->
     <button id="edge-left"  class="edge-hint left"  title="Atrás">‹</button>
     <button id="edge-right" class="edge-hint right" title="Adelante">›</button>
   </div>
