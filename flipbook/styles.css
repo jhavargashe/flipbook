@@ -1,102 +1,157 @@
 :root{
-  --book-ar: 3/2;
+  --book-ar: 3/2;                 /* Se recalcula por JS según tus imágenes */
   --radius: 16px;
   --shadow: 0 18px 55px rgba(0,0,0,.18);
   --bg: #f5f6f7;
 
+  /* Tema claro (modo embebido/pequeño) */
   --tc-bg: rgba(255,255,255,.92);
   --tc-shadow: 0 6px 20px rgba(0,0,0,.12);
   --icon-bg:#fff; --icon-fg:#222; --icon-bd:#d9d9d9;
 
   --rail:#cbcbcb; --fill:#6f6f6f;
 
+  /* Spinner */
   --spin-base: rgba(0,0,0,.14);
   --spin-fg:   #6f6f6f;
   --spin-bg:   rgba(255,255,255,.75);
 }
 
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+html,body{
+  height:100%;
+  margin:0;
+  background:var(--bg);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif
+}
 button{border:0;background:none;padding:0;cursor:pointer}
 
-.viewer{min-height:100vh;display:grid;place-items:center;position:relative}
+/* Contenedor principal */
+.viewer{
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  position:relative;
+}
+
+/* Botonera superior (derecha) */
 .top-controls{
-  position:fixed; right:16px; top:16px; z-index:10;
-  display:flex; gap:8px; background:var(--tc-bg);
-  border-radius:12px; padding:6px 8px; box-shadow:var(--tc-shadow);
-  backdrop-filter:blur(6px)
+  position:fixed;
+  right:16px; top:16px;
+  z-index:10;
+  display:flex; gap:8px;
+  background:var(--tc-bg);
+  border-radius:12px; padding:6px 8px;
+  box-shadow:var(--tc-shadow);
+  backdrop-filter:blur(6px);
 }
 .icon{
-  width:38px;height:38px;border-radius:10px;background:var(--icon-bg);color:var(--icon-fg);
-  border:1px solid var(--icon-bd); font-size:18px;line-height:38px;text-align:center;
+  width:38px;height:38px;border-radius:10px;
+  background:var(--icon-bg);color:var(--icon-fg);
+  border:1px solid var(--icon-bd);
+  font-size:18px;line-height:38px;text-align:center;
   transition:transform .12s ease,opacity .12s ease
 }
 .icon:disabled{opacity:.35;cursor:not-allowed}
 .icon:hover{transform:translateY(-1px)}
 
-.stack{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
-
-.book{
-  position:relative;width:min(96vw,1280px);aspect-ratio:var(--book-ar);
-  background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
-  overflow:hidden;perspective:2200px
+/* Libro + barra centrados */
+.stack{
+  display:flex;flex-direction:column;align-items:center;
+  gap:12px;width:100%;
 }
+
+/* Libro */
+.book{
+  position:relative;
+  width:min(96vw,1280px);
+  aspect-ratio:var(--book-ar);
+  background:#fff;
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+  perspective:2200px;
+}
+/* Sombras de “gutter” arriba/abajo y leve viñeteo lateral */
 .gutter{
-  position:absolute;inset:0;z-index:1;pointer-events:none;
+  position:absolute; inset:0; z-index:1; pointer-events:none;
   background:
     linear-gradient(90deg, rgba(0,0,0,.08), transparent 12%, transparent 88%, rgba(0,0,0,.08)),
     radial-gradient(120px 100% at 50% 0, rgba(0,0,0,.14), transparent 60%),
     radial-gradient(120px 100% at 50% 100%, rgba(0,0,0,.14), transparent 60%);
-  opacity:.33
+  opacity:.33;
 }
 
-/* Páginas */
+/* =========================
+   PÁGINAS (mitades del libro)
+   ========================= */
 .page{
-  position:absolute;inset:0;width:50%;height:100%;
-  z-index:2;                 /* base */
-  transform-style:preserve-3d;  /* <-- importante para el giro del lado derecho */
+  position:absolute;
+  top:0; bottom:0;             /* solo vertical */
+  width:50%; height:100%;
+  z-index:2;                   /* base */
+  transform-style:preserve-3d; /* necesario para el giro */
 }
-.page.turning{ z-index:7 }   /* lado activo por encima */
-.page.left {left:0; transform-origin:right center}
-.page.right{right:0;transform-origin:left  center}
+.page.turning{ z-index:7 }     /* la que gira queda encima */
 
-/* Hoja que gira */
+.page.left  { left:0;  right:auto; transform-origin:right center; }
+.page.right { right:0; left:auto;  transform-origin:left  center; }
+
+/* Hoja que gira (cara + dorso) */
 .sheet{
-  position:absolute;inset:0;width:100%;height:100%;
-  backface-visibility:hidden; transform-style:preserve-3d; will-change:transform
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  backface-visibility:hidden;
+  transform-style:preserve-3d;
+  will-change:transform;
 }
 .sheet img{
-  position:absolute;inset:0;width:100%;height:100%;
-  object-fit:contain;background:#fff;opacity:0;transition:opacity .18s ease
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  object-fit:contain;
+  background:#fff;
+  opacity:0;                   /* aparece al cargar */
+  transition:opacity .18s ease;
 }
 .sheet .back{
-  content:""; position:absolute; inset:0; background:#fff;
-  transform:rotateY(180deg); backface-visibility:hidden
+  content:"";
+  position:absolute; inset:0; background:#fff;
+  transform:rotateY(180deg); backface-visibility:hidden;
 }
+/* Ribete (grosor de hoja) */
 .sheet .edge{
   position:absolute; top:0; bottom:0; width:3px;
-  left:auto; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd);
-  transform:translateZ(0.5px)
+  left:auto; right:0;
+  background:linear-gradient(180deg,#ddd,#aaa,#ddd);
+  transform:translateZ(0.5px);
 }
-.page.left  .sheet .edge{left:0;right:auto}
+.page.left  .sheet .edge{ left:0; right:auto; }
 
-/* Sombras */
+/* Sombra en el pliegue de la hoja que gira */
 .sheet .foldShade{
   position:absolute; inset:0; pointer-events:none; opacity:0;
   background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
 }
-.page.left  .sheet .foldShade{background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%)}
+.page.left .sheet .foldShade{
+  background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
+}
+/* Sombra proyectada sobre la página opuesta */
 .oppositeShade{
   position:absolute; inset:0; pointer-events:none; opacity:0;
-  background:radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.25), transparent 60%)
+  background:radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.25), transparent 60%);
 }
 
-/* Arrastre desde la esquina */
-.corner{position:absolute;z-index:8;width:20%;height:28%;opacity:0}
-.corner.left {left:0; bottom:0; transform:translate(-4%,4%)}
-.corner.right{right:0; bottom:0; transform:translate( 4%,4%)}
+/* Zonas de arrastre desde esquina */
+.corner{
+  position:absolute; z-index:8;
+  width:20%; height:28%; opacity:0; /* invisibles pero clicables */
+}
+.corner.left  { left:0;  bottom:0; transform:translate(-4%,4%) }
+.corner.right { right:0; bottom:0; transform:translate( 4%,4%) }
 
-/* Loader circular por página */
+/* =========================
+   Loader circular por página
+   ========================= */
 .spinner{
   position:absolute; z-index:6;
   top:50%; left:50%; transform:translate(-50%,-50%);
@@ -111,25 +166,47 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .spinner.hidden{ opacity:0; transform:translate(-50%,-50%) scale(.9); pointer-events:none }
 @keyframes spin { to { transform:translate(-50%,-50%) rotate(360deg) } }
 
-/* Barra inferior */
-.bar{width:100%;display:flex;justify-content:center}
-.bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:10px}
-.rail{
-  position:relative;width:min(96vw,1280px);height:16px;border-radius:999px;
-  background: var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08)
+/* =========================
+   Barra inferior tipo “botón”
+   ========================= */
+.bar{ width:100%; display:flex; justify-content:center }
+.bar-box{
+  background:var(--tc-bg);
+  border-radius:12px;
+  box-shadow:var(--tc-shadow);
+  padding:10px;
 }
-.fill{position:absolute;left:2px;top:2px;bottom:2px;width:0%;background: var(--fill);border-radius:999px;transition:width .12s linear}
-.slider{position:absolute;inset:0;width:100%;height:100%;appearance:none;background:transparent;outline:none;cursor:pointer}
+.rail{
+  position:relative;
+  width:min(96vw,1280px);
+  height:16px; border-radius:999px;
+  background:var(--rail);
+  box-shadow:inset 0 2px 5px rgba(0,0,0,.08);
+}
+.fill{
+  position:absolute; left:2px; top:2px; bottom:2px; width:0%;
+  background:var(--fill); border-radius:999px;
+  transition:width .12s linear;
+}
+.slider{
+  position:absolute; inset:0; width:100%; height:100%;
+  appearance:none; background:transparent; outline:none; cursor:pointer;
+}
 .slider::-webkit-slider-thumb{appearance:none;width:0;height:0}
 .slider::-moz-range-thumb{width:0;height:0;border:0}
 
-/* Fullscreen oscuro */
+/* =========================
+   Tema oscuro en fullscreen
+   ========================= */
 :fullscreen .viewer{
-  --tc-bg: rgba(20,20,20,.88); --tc-shadow: 0 10px 30px rgba(0,0,0,.35);
+  --tc-bg: rgba(20,20,20,.88);
+  --tc-shadow: 0 10px 30px rgba(0,0,0,.35);
   --icon-bg:#111; --icon-fg:#fff; --icon-bd:#0000;
   --rail:#8d8d8d; --fill:#2a2a2a;
+
   --spin-base: rgba(255,255,255,.22);
   --spin-fg:   #e9e9e9;
   --spin-bg:   rgba(0,0,0,.25);
+
   background:#000;
 }
