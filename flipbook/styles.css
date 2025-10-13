@@ -43,14 +43,9 @@ button{border:0;background:none;padding:0;cursor:pointer}
   background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
   overflow:hidden;perspective:2200px
 }
-.gutter{
-  position:absolute;inset:0;z-index:1;pointer-events:none;
-  background:
-    linear-gradient(90deg, rgba(0,0,0,.08), transparent 12%, transparent 88%, rgba(0,0,0,.08)),
-    radial-gradient(120px 100% at 50% 0, rgba(0,0,0,.14), transparent 60%),
-    radial-gradient(120px 100% at 50% 100%, rgba(0,0,0,.14), transparent 60%);
-  opacity:.33
-}
+
+/* ⚠️ Desactiva la viñeta global para que las sombras solo aparezcan en la hoja que gira */
+.gutter{ display:none !important; }
 
 /* Mitades estáticas del libro */
 .page{
@@ -72,7 +67,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .oppositeShade{ position:absolute; inset:0; pointer-events:none; opacity:0;
   background:radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.25), transparent 60%) }
 
-/* Zonas de esquina para drag */
+/* Zonas de esquina para drag (invisibles) */
 .corner{position:absolute;z-index:8;width:20%;height:28%;opacity:0}
 .corner.left  {left:0;  bottom:0; transform:translate(-4%,4%)}
 .corner.right {right:0; bottom:0; transform:translate( 4%,4%)}
@@ -123,10 +118,15 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .turn .half.left{ grid-column:1 }
 .turn .half.right{ grid-column:2 }
 
-/* Sombra móvil del pliegue */
+/* 🔦 Sombra móvil del pliegue SOLO sobre la hoja que gira (media anchura) */
 .turn .turnShade{
-  position:absolute; inset:0; pointer-events:none; opacity:0;
+  position:absolute; top:0; bottom:0; width:50%;
+  pointer-events:none; opacity:0;
   background:
-    linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%),
-    radial-gradient(60% 140% at 50% 50%, rgba(0,0,0,.20), transparent 60%);
+    radial-gradient(60% 140% at 50% 50%, rgba(0,0,0,.20), transparent 60%),
+    linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
 }
+/* R → L (adelante): sombra vive en la mitad derecha */
+.turn.forward  .turnShade{ left:50%; }
+/* L → R (atrás): anclada a la mitad izquierda + espejo del gradiente */
+.turn.backward .turnShade{ left:0; transform:scaleX(-1); }
