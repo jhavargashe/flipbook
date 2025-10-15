@@ -1,6 +1,7 @@
 :root{
+  /* AR base: el JS seteará --page-ar; el libro usa siempre AR de spread */
   --page-ar: 2/3;                            /* ancho/alto de UNA página */
-  --book-ar: calc(2 * var(--page-ar));       /* spread (dos páginas) */
+  --book-ar: calc(2 * var(--page-ar));       /* spread = dos páginas lado a lado */
 
   --radius: 16px;
   --shadow: 0 18px 55px rgba(0,0,0,.18);
@@ -10,8 +11,13 @@
   --tc-shadow: 0 6px 20px rgba(0,0,0,.12);
   --icon-bg:#fff; --icon-fg:#222; --icon-bd:#d9d9d9;
 
+  /* Barra más delgada y 3× separación respecto al libro */
+  --bar-h: 10px;
+  --bar-gap: calc(var(--bar-h) * 3 + 14px);
+
   --rail:#cbcbcb; --fill:#6f6f6f;
 
+  /* spinner */
   --spin-base: rgba(0,0,0,.14);
   --spin-fg:   #6f6f6f;
   --spin-bg:   rgba(255,255,255,.75);
@@ -38,16 +44,15 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .icon:disabled{opacity:.35;cursor:not-allowed}
 .icon:hover{transform:translateY(-1px)}
 
-.stack{display:flex;flex-direction:column;align-items:center;gap:28px;width:100%}
+.stack{display:flex;flex-direction:column;align-items:center;gap:var(--bar-gap);width:100%}
 
-/* Libro: AR de spread; en portada oculto .left */
+/* Libro: SIEMPRE usa AR de spread; en portada la izquierda no existe */
 .book{
   position:relative;width:min(96vw,1280px);aspect-ratio:var(--book-ar);
   background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
   overflow:hidden;perspective:2200px
 }
-.book.dragging{ overflow:visible; } /* para que no se corte la hoja en drag */
-
+.book.dragging{ overflow:visible; } /* para que no se corte la hoja durante drag */
 .book.single .page.left{ display:none; }
 
 .gutter{
@@ -76,15 +81,20 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .page.left .sheet .edge{ left:0; right:auto }
 .sheet .foldShade{ position:absolute; inset:0; pointer-events:none; opacity:0; background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
 .page.left .sheet .foldShade{ background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
-.oppositeShade{ position:absolute; inset:0; pointer-events:none; opacity:0;
-  background:radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.28), transparent 62%) }
 
-/* Arrastre por borde */
+/* Overlays de oscurecimiento estático (usados para el fade 1/4 ó 3/4) */
+.oppositeShade{
+  position:absolute; inset:0; pointer-events:none; opacity:0;
+  background:#000; /* uniforme para “opacidad 0→0.8” */
+  transition: opacity .12s linear;
+}
+
+/* Franja de ARRASTRE por BORDE (vertical completa, estrecha ~9%) */
 .drag-zone{
   position:absolute; top:0; height:100%; width:9%;
   z-index:8; opacity:0; cursor:ew-resize; touch-action:none;
 }
-.drag-zone.left  { left:0; }
+.drag-zone.left  { left:0;  }
 .drag-zone.right { right:0; }
 
 /* Loader por página */
@@ -99,10 +109,10 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .spinner.hidden{ opacity:0; transform:translate(-50%,-50%) scale(.9); pointer-events:none }
 @keyframes spin { to { transform:translate(-50%,-50%) rotate(360deg) } }
 
-/* Barra inferior (baja) */
-.bar{width:100%;display:flex;justify-content:center; margin-top:-4px; }
-.bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:12px 12px 14px}
-.rail{ position:relative;width:min(96vw,1280px);height:18px;border-radius:999px;background:var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08) }
+/* Barra inferior: más delgada y 3× más abajo */
+.bar{width:100%;display:flex;justify-content:center;}
+.bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:8px 12px 10px}
+.rail{ position:relative;width:min(96vw,1280px);height:var(--bar-h);border-radius:999px;background:var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08) }
 .fill{ position:absolute;left:2px;top:2px;bottom:2px;width:0%;background:var(--fill);border-radius:999px;transition:width .12s linear }
 .slider{ position:absolute;inset:0;width:100%;height:100%;appearance:none;background:transparent;outline:none;cursor:pointer }
 .slider::-webkit-slider-thumb{appearance:none;width:0;height:0}
@@ -119,6 +129,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 /* ============ HOJA OVERLAY (flip único) ============ */
 .turn{
+  /* ampliamos el canvas del overlay para que no se "corte" en bordes */
   position:absolute; inset:-24px; z-index:9; pointer-events:none;
   transform-style:preserve-3d;
 }
@@ -132,7 +143,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .turn .half.left{ grid-column:1 }
 .turn .half.right{ grid-column:2 }
 
-/* Sombra del pliegue sólo en la hoja que gira */
+/* Sombra del pliegue SOLO sobre la hoja que gira */
 .turn .turnShade{
   position:absolute; top:24px; bottom:24px; width:50%;
   left:calc(50% + 24px); /* R→L por defecto */
@@ -143,14 +154,21 @@ button{border:0;background:none;padding:0;cursor:pointer}
 }
 .turn.backward .turnShade{ left:24px; transform:scaleX(-1); }
 
-/* Flechas-guía */
-.edge-hint{
-  position:fixed; bottom:62px; z-index:11;
-  width:44px; height:44px; border-radius:999px;
-  background:var(--tc-bg); color:#111; box-shadow:var(--tc-shadow);
-  display:grid; place-items:center; font-size:26px; line-height:1;
-  border:1px solid rgba(0,0,0,.06);
+/* Dim para mitades de la hoja que gira (para el fade 2 y 3) */
+.turn .dim{
+  position:absolute; top:24px; bottom:24px; background:#000; opacity:0; pointer-events:none;
 }
-.edge-hint.left  { left:  max(8px, calc(50vw - min(96vw, 1280px)/2)); }
-.edge-hint.right { right: max(8px, calc(50vw - min(96vw, 1280px)/2)); }
+.turn .dim.left  { left:24px; right:calc(50% + 24px); }
+.turn .dim.right { left:calc(50% + 24px); right:24px; }
+
+/* Flechas laterales (sin cápsula, con sombrita), a la altura de la barra */
+.edge-hint{
+  position:fixed; z-index:11;
+  bottom: calc(var(--bar-gap) - var(--bar-h) - 2px); /* misma “línea Y” de la barra */
+  font-size: 28px; line-height:1;
+  color:#222; text-shadow: 0 2px 6px rgba(0,0,0,.35);
+  padding: 2px 4px;
+}
+.edge-hint.left  { left:  calc(50vw - min(96vw, 1280px)/2 - 18px); }
+.edge-hint.right { right: calc(50vw - min(96vw, 1280px)/2 - 18px); }
 .edge-hint:hover { transform:translateY(-1px) }

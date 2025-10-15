@@ -29,8 +29,8 @@ const imgR   = document.getElementById('img-right');
 const spinL  = document.getElementById('spin-left');
 const spinR  = document.getElementById('spin-right');
 
-const oppL   = pageLeft.querySelector('.oppositeShade');
-const oppR   = pageRight.querySelector('.oppositeShade');
+const oppL   = pageLeft.querySelector('.oppositeShade');   // oscurecimiento estático izq
+const oppR   = pageRight.querySelector('.oppositeShade');  // oscurecimiento estático der
 
 const slider = document.getElementById('slider');
 const fill   = document.getElementById('fill');
@@ -188,11 +188,12 @@ function render(){
   applyBookARClass();
   const {left,right} = indicesFromView(view);
   paintStatic(left, right);
+  // reset fades
   oppL.style.opacity = 0; oppR.style.opacity = 0;
   updateUI();
 }
 
-/********* Overlay y animación *********/
+/********* Overlay y animación (incluye capas para “dim” por mitad) *********/
 function makeTurnOverlay(direction){
   const turn = document.createElement('div');
   turn.className = 'turn';
@@ -210,6 +211,11 @@ function makeTurnOverlay(direction){
 
   const shade = document.createElement('div'); shade.className='turnShade';
 
+  // Dim overlays por mitad (para cumplir: 2 y/o 3 se atenúan tras la mitad)
+  const dimL = document.createElement('div'); dimL.className = 'dim left';
+  const dimR = document.createElement('div'); dimR.className = 'dim right';
+
+  // Caras en función del estado ACTUAL (antes de cambiar view)
   const cur   = indicesFromView(view);
   const nextV = nextViewFrom(view);
   const prevV = prevViewFrom(view);
@@ -217,61 +223,50 @@ function makeTurnOverlay(direction){
   const prevI = indicesFromView(prevV);
 
   if (direction==='forward'){
-    // 4 caras: Lcur (estática), overlay: front=Rcur, back=Lnext, estática derecha=Rnext
-    fR.src = getPreparedURL(pages[cur.right]  || '');
-    bL.src = getPreparedURL(pages[nextI.left] || '');
+    // 4 caras: (1)Lcur estática, overlay: front=Rcur(2), back=Lnext(3), estática derecha=Rnext(4)
+    fR.src = getPreparedURL(pages[cur.right]  || '');     // 2
+    bL.src = getPreparedURL(pages[nextI.left] || '');     // 3
     fL.style.opacity=0; bR.style.opacity=0;
   } else {
-    // Atrás: overlay front=Lcur, back=Rprev  (estáticas: izq=Lprev, der=Rcur)
-    fL.src = getPreparedURL(pages[cur.left]  || '');
-    bR.src = getPreparedURL(pages[prevI.right] || '');
+    // Atrás: estática derecha = Rcur(4), overlay: front=Lcur(3), back=Rprev(2), estática izq = Lprev(1)
+    fL.src = getPreparedURL(pages[cur.left]  || '');      // 3
+    bR.src = getPreparedURL(pages[prevI.right] || '');    // 2
     fR.style.opacity=0; bL.style.opacity=0;
   }
 
-  turn.append(front, back, shade);
+  turn.append(front, back, shade, dimL, dimR);
   book.appendChild(turn);
-  return {turn, shade};
+  return {turn, shade, fL, fR, bL, bR, dimL, dimR};
 }
 
-function setTurnDeg(turnEl, shadeEl, deg, direction){
+function setTurnDeg(turnEl, shadeEl, deg, direction, refs){
   turnEl.style.transform = `rotateY(${deg}deg)`;
   const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
   shadeEl.style.opacity = 0.50 * k;
 
-  // oscurecimiento del lado de aterrizaje
-  const land = Math.max(0, (Math.abs(deg)-90)/90); // 0 cuando ~vertical, 1 al cerrar
-  if (direction==='forward'){         // cae a la izquierda
-    oppL.style.opacity = 0.35 * land;
-    oppR.style.opacity = 0;
-  } else {                            // cae a la derecha
-    oppR.style.opacity = 0.35 * land;
-    oppL.style.opacity = 0;
+  // Progreso de “caída” después de la mitad (0 en ~90°, 1 al cerrar)
+  const land = Math.max(0, (Math.abs(deg)-90)/90);
+
+  // Reglas de atenuación solicitadas:
+  // Adelante: al pasar la mitad ⇒ fade 1 (estática izq) + 2 (mitad izq de hoja que gira)
+  // Atrás:    al pasar la mitad ⇒ fade 3 (mitad der de hoja que gira) + 4 (estática der)
+  const target = 0.8 * land;
+
+  if (direction==='forward'){
+    // estática izquierda
+    oppL.style.opacity = target;
+    // mitad izquierda de la hoja que gira: en adelante es bL (Lnext)
+    refs.dimL.style.opacity = target;
+  } else {
+    // estática derecha
+    oppR.style.opacity = target;
+    // mitad derecha de la hoja que gira: en atrás es bR (Rprev)
+    refs.dimR.style.opacity = target;
   }
 }
 
-function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
-  if (isAnimating) return;
-  isAnimating = true;
-  book.classList.add('dragging');
-
-  const {turn, shade} = makeTurnOverlay(direction);
-  const t0 = performance.now();
-
-  function frame(now){
-    const t = Math.min(1,(now-t0)/ms);
-    const d = fromDeg + (toDeg-fromDeg)*easeInOut(t);
-    setTurnDeg(turn, shade, d, direction);
-    if(t<1) requestAnimationFrame(frame);
-    else{
-      Promise.resolve(gatePromise).then(()=>{
-        turn.remove(); isAnimating = false;
-        oppL.style.opacity = 0; oppR.style.opacity = 0;
-        book.classList.remove('dragging');
-        onDone && onDone();
-      });
-    }
-  }
-  requestAnimationFrame(frame);
+function clearFades(){
+  oppL.style.opacity = 0; oppR.style.opacity = 0;
 }
 
 /********* PREVIEW de fondo (solo lado de destino) *********/
@@ -282,10 +277,10 @@ function previewStaticsFor(direction){
     const nextV = nextViewFrom(view);
     const nextI = indicesFromView(nextV);
 
-    // mostrar ya el destino en la DERECHA (Rnext),
-    // mantener la IZQUIERDA como Lcur (si es portada, nace con page1)
+    // Mostrar ya el destino en la DERECHA (Rnext),
+    // mantener la IZQUIERDA como Lcur (si portada, usamos right actual a la izquierda visual durante la apertura)
     book.classList.remove('single'); // abrir si venimos de portada
-    const leftIdx  = cur.left || cur.right;  // portada: usa page1 a la izquierda
+    const leftIdx  = cur.left || cur.right;  // portada: “nace” a partir de la 1
     const rightIdx = nextI.right;
     paintStatic(leftIdx, rightIdx);
     return nextV;
@@ -293,14 +288,40 @@ function previewStaticsFor(direction){
     const prevV = prevViewFrom(view);
     const prevI = indicesFromView(prevV);
 
-    // mostrar ya el destino en la IZQUIERDA (Lprev),
+    // Mostrar ya el destino en la IZQUIERDA (Lprev),
     // mantener la DERECHA como Rcur
-    book.classList.remove('single'); // mientras gira, mantenemos spread
+    book.classList.remove('single');
     const leftIdx  = prevI.left;
     const rightIdx = cur.right;
     paintStatic(leftIdx, rightIdx);
     return prevV;
   }
+}
+
+/********* Animación *********/
+function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
+  if (isAnimating) return;
+  isAnimating = true;
+  book.classList.add('dragging');
+
+  const refs = makeTurnOverlay(direction); // incluye dimL/dimR
+  const t0 = performance.now();
+
+  function frame(now){
+    const t = Math.min(1,(now-t0)/ms);
+    const d = fromDeg + (toDeg-fromDeg)*easeInOut(t);
+    setTurnDeg(refs.turn, refs.shade, d, direction, refs);
+    if(t<1) requestAnimationFrame(frame);
+    else{
+      Promise.resolve(gatePromise).then(()=>{
+        refs.turn.remove(); isAnimating = false;
+        clearFades();
+        book.classList.remove('dragging');
+        onDone && onDone();
+      });
+    }
+  }
+  requestAnimationFrame(frame);
 }
 
 /********* Navegación *********/
@@ -388,14 +409,15 @@ function startDrag(side, e){
   // preview de fondo (solo lado de destino)
   const targetV = previewStaticsFor(dir);
 
-  const {turn, shade} = makeTurnOverlay(dir);
   const rect = book.getBoundingClientRect();
   const startX = e.clientX;
-
   e.currentTarget.setPointerCapture && e.currentTarget.setPointerCapture(pointerId);
 
-  setTurnDeg(turn, shade, dir==='forward' ? -8 : 8, dir);
-  drag = { dir, overlay:turn, shade, rect, startX, t:0, deg:0, pointerId, preview:targetV };
+  // crea overlay
+  const refs = makeTurnOverlay(dir);
+  setTurnDeg(refs.turn, refs.shade, dir==='forward' ? -8 : 8, dir, refs);
+
+  drag = { dir, refs, rect, startX, t:0, deg:0, pointerId, preview:targetV };
 }
 function moveDrag(e){
   if (!drag) return;
@@ -410,11 +432,11 @@ function moveDrag(e){
 
   const deg = (dir==='forward') ? -180*t : 180*t;
   drag.deg = deg;
-  setTurnDeg(drag.overlay, drag.shade, deg, dir);
+  setTurnDeg(drag.refs.turn, drag.refs.shade, deg, dir, drag.refs);
 }
 function endDrag(e){
   if (!drag) return;
-  const {dir, t, overlay, shade, deg, pointerId, preview} = drag;
+  const {dir, t, refs, deg, pointerId, preview} = drag;
   drag = null;
 
   try{ e.currentTarget.releasePointerCapture && e.currentTarget.releasePointerCapture(pointerId); }catch{}
@@ -433,12 +455,12 @@ function endDrag(e){
     function frame(now){
       const k = Math.min(1,(now-t0)/ms);
       const d = from + (to-from)*easeInOut(k);
-      setTurnDeg(overlay, shade, d, dir);
+      setTurnDeg(refs.turn, refs.shade, d, dir, refs);
       if (k<1) requestAnimationFrame(frame);
       else {
         Promise.resolve(gate).then(()=>{
-          overlay.remove(); isAnimating=false;
-          oppL.style.opacity = 0; oppR.style.opacity = 0;
+          refs.turn.remove(); isAnimating=false;
+          clearFades();
           book.classList.remove('dragging');
           view = preview; render();
         });
@@ -452,17 +474,18 @@ function endDrag(e){
     function frame(now){
       const k = Math.min(1,(now-t0)/ms);
       const d = from + (to-from)*easeInOut(k);
-      setTurnDeg(overlay, shade, d, dir);
+      setTurnDeg(refs.turn, refs.shade, d, dir, refs);
       if (k<1) requestAnimationFrame(frame);
       else {
-        overlay.remove(); isAnimating=false;
-        oppL.style.opacity = 0; oppR.style.opacity = 0;
+        refs.turn.remove(); isAnimating=false;
+        clearFades();
         book.classList.remove('dragging');
         render();
       }
     }
     requestAnimationFrame(frame);
   }
+
   setTimeout(()=>{ suppressClick=false; }, 80);
 }
 
