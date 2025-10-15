@@ -82,10 +82,10 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .sheet .foldShade{ position:absolute; inset:0; pointer-events:none; opacity:0; background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
 .page.left .sheet .foldShade{ background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
 
-/* Overlays de oscurecimiento estático (usados para el fade 1/4 ó 3/4) */
+/* Overlays de oscurecimiento estático (los gradientes se setean por JS) */
 .oppositeShade{
   position:absolute; inset:0; pointer-events:none; opacity:0;
-  background:#000; /* uniforme para “opacidad 0→0.8” */
+  background:#000; /* fallback; el JS pone background-image con linear-gradient */
   transition: opacity .12s linear;
 }
 
@@ -154,7 +154,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 }
 .turn.backward .turnShade{ left:24px; transform:scaleX(-1); }
 
-/* Dim para mitades de la hoja que gira (para el fade 2 y 3) */
+/* Dim para mitades de la hoja que gira (PF1/PF2) */
 .turn .dim{
   position:absolute; top:24px; bottom:24px; background:#000; opacity:0; pointer-events:none;
 }

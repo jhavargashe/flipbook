@@ -29,8 +29,8 @@ const imgR   = document.getElementById('img-right');
 const spinL  = document.getElementById('spin-left');
 const spinR  = document.getElementById('spin-right');
 
-const oppL   = pageLeft.querySelector('.oppositeShade');   // oscurecimiento estático izq
-const oppR   = pageRight.querySelector('.oppositeShade');  // oscurecimiento estático der
+const oppL   = pageLeft .querySelector('.oppositeShade');   // PE1
+const oppR   = pageRight.querySelector('.oppositeShade');   // PE2
 
 const slider = document.getElementById('slider');
 const fill   = document.getElementById('fill');
@@ -190,10 +190,32 @@ function render(){
   paintStatic(left, right);
   // reset fades
   oppL.style.opacity = 0; oppR.style.opacity = 0;
+  oppL.style.backgroundImage = '';
+  oppR.style.backgroundImage = '';
   updateUI();
 }
 
-/********* Overlay y animación (incluye capas para “dim” por mitad) *********/
+/********* Helpers de sombra (gradiente + animación) *********/
+const clamp01 = x => Math.max(0, Math.min(1, x));
+
+/**
+ * Pinta un sombreado lineal en un elemento.
+ * dir: 'LR' (izq→der, izquierda más oscura) o 'RL' (der→izq)
+ * alphaMax: tope del gradiente (ej. 0.30 o 0.60)
+ * vis: factor de animación (0..1) que hace aparecer/desaparecer ese gradiente
+ */
+function setLinearShade(el, dir, alphaMax, vis){
+  if (!el) return;
+  const a = clamp01(alphaMax);
+  const v = clamp01(vis);
+  const grad = (dir === 'LR')
+    ? `linear-gradient(90deg, rgba(0,0,0,${a}) 0%, rgba(0,0,0,0) 65%)`
+    : `linear-gradient(270deg, rgba(0,0,0,${a}) 0%, rgba(0,0,0,0) 65%)`;
+  el.style.backgroundImage = grad;
+  el.style.opacity = v;
+}
+
+/********* Overlay y animación (incluye PF1/PF2 y sombras PE1/PE2) *********/
 function makeTurnOverlay(direction){
   const turn = document.createElement('div');
   turn.className = 'turn';
@@ -206,16 +228,15 @@ function makeTurnOverlay(direction){
   const fR = document.createElement('img'); fR.className='half right';
   const bL = document.createElement('img'); bL.className='half left';
   const bR = document.createElement('img'); bR.className='half right';
-
   front.append(fL,fR); back.append(bL,bR);
 
   const shade = document.createElement('div'); shade.className='turnShade';
 
-  // Dim overlays por mitad (para cumplir: 2 y/o 3 se atenúan tras la mitad)
+  // Overlays de “material” por mitad (PF1/PF2)
   const dimL = document.createElement('div'); dimL.className = 'dim left';
   const dimR = document.createElement('div'); dimR.className = 'dim right';
 
-  // Caras en función del estado ACTUAL (antes de cambiar view)
+  // Caras según estado actual
   const cur   = indicesFromView(view);
   const nextV = nextViewFrom(view);
   const prevV = prevViewFrom(view);
@@ -223,14 +244,14 @@ function makeTurnOverlay(direction){
   const prevI = indicesFromView(prevV);
 
   if (direction==='forward'){
-    // 4 caras: (1)Lcur estática, overlay: front=Rcur(2), back=Lnext(3), estática derecha=Rnext(4)
-    fR.src = getPreparedURL(pages[cur.right]  || '');     // 2
-    bL.src = getPreparedURL(pages[nextI.left] || '');     // 3
+    // PF1 = fR (Rcur), PF2 = bL (Lnext)
+    fR.src = getPreparedURL(pages[cur.right]  || '');
+    bL.src = getPreparedURL(pages[nextI.left] || '');
     fL.style.opacity=0; bR.style.opacity=0;
   } else {
-    // Atrás: estática derecha = Rcur(4), overlay: front=Lcur(3), back=Rprev(2), estática izq = Lprev(1)
-    fL.src = getPreparedURL(pages[cur.left]  || '');      // 3
-    bR.src = getPreparedURL(pages[prevI.right] || '');    // 2
+    // PF1 = fL (Lcur), PF2 = bR (Rprev)
+    fL.src = getPreparedURL(pages[cur.left]     || '');
+    bR.src = getPreparedURL(pages[prevI.right]  || '');
     fR.style.opacity=0; bL.style.opacity=0;
   }
 
@@ -239,34 +260,74 @@ function makeTurnOverlay(direction){
   return {turn, shade, fL, fR, bL, bR, dimL, dimR};
 }
 
+/* Sombras con tu convención (CN=0°, R→L: 90→0→-90, L→R: -90→0→90) */
 function setTurnDeg(turnEl, shadeEl, deg, direction, refs){
+  // Rotamos la hoja
   turnEl.style.transform = `rotateY(${deg}deg)`;
+
+  // Sombra del pliegue (fuerte en CN, suave al inicio/fin)
   const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
   shadeEl.style.opacity = 0.50 * k;
 
-  // Progreso de “caída” después de la mitad (0 en ~90°, 1 al cerrar)
-  const land = Math.max(0, (Math.abs(deg)-90)/90);
+  // Topes
+  const PF_MAX = 0.30; // PF1/PF2
+  const PE_MAX = 0.60; // PE1/PE2
 
-  // Reglas de atenuación solicitadas:
-  // Adelante: al pasar la mitad ⇒ fade 1 (estática izq) + 2 (mitad izq de hoja que gira)
-  // Atrás:    al pasar la mitad ⇒ fade 3 (mitad der de hoja que gira) + 4 (estática der)
-  const target = 0.8 * land;
+  // Normalización del ángulo a tu convención
+  const phi = (direction === 'forward') ? (deg + 90) : (deg - 90);
 
-  if (direction==='forward'){
-    // estática izquierda
-    oppL.style.opacity = target;
-    // mitad izquierda de la hoja que gira: en adelante es bL (Lnext)
-    refs.dimL.style.opacity = target;
+  // Progresos de fase
+  // Fase A: se levanta (→ CN)
+  const tA = clamp01( (direction === 'forward')
+    ? (phi >  0 ? (90 - phi) / 90 : 0)   // forward, 90→0
+    : (phi <  0 ? (phi + 90) / 90 : 0) );// backward, -90→0
+
+  // Fase B: cae (desde CN)
+  const tB = clamp01( (direction === 'forward')
+    ? (phi <  0 ? (-phi) / 90     : 0)   // forward, 0→-90
+    : (phi >  0 ? (phi) / 90       : 0) );// backward, 0→+90
+
+  const { dimL, dimR } = refs; // PF2=dimL, PF1=dimR en forward (y espejo en backward)
+
+  if (direction === 'forward'){
+    // ---- FORWARD (R→L) ----
+    // FASE A (90→0)
+    // PF1 = mitad derecha (dimR), grad L→R, anim 0→1
+    setLinearShade(dimR, 'LR', PF_MAX, tA);
+    // PF2 = mitad izquierda (dimL), grad R→L, anim 0→1
+    setLinearShade(dimL, 'RL', PF_MAX, tA);
+    // PE2 = derecha estática (oppR), grad L→R, anim 1→0
+    setLinearShade(oppR, 'LR', PE_MAX, (tA > 0 ? (1 - tA) : 0));
+
+    // FASE B (0→-90)
+    // PF1 y PF2 siguen “material” 0→1
+    setLinearShade(dimR, 'LR', PF_MAX, tB);
+    setLinearShade(dimL, 'RL', PF_MAX, tB);
+    // PE1 = izquierda estática (oppL), grad R→L, anim 0→1
+    setLinearShade(oppL, 'RL', PE_MAX, tB);
+
   } else {
-    // estática derecha
-    oppR.style.opacity = target;
-    // mitad derecha de la hoja que gira: en atrás es bR (Rprev)
-    refs.dimR.style.opacity = target;
+    // ---- BACKWARD (L→R) ----
+    // FASE A (-90→0)
+    // PF1 = mitad izquierda (dimL), grad R→L, anim 0→1
+    setLinearShade(dimL, 'RL', PF_MAX, tA);
+    // PF2 = mitad derecha (dimR), grad L→R, anim 0→1
+    setLinearShade(dimR, 'LR', PF_MAX, tA);
+    // PE1 = izquierda estática (oppL), grad R→L, anim 1→0
+    setLinearShade(oppL, 'RL', PE_MAX, (tA > 0 ? (1 - tA) : 0));
+
+    // FASE B (0→+90)
+    setLinearShade(dimL, 'RL', PF_MAX, tB);
+    setLinearShade(dimR, 'LR', PF_MAX, tB);
+    // PE2 = derecha estática (oppR), grad L→R, anim 0→1
+    setLinearShade(oppR, 'LR', PE_MAX, tB);
   }
 }
 
 function clearFades(){
   oppL.style.opacity = 0; oppR.style.opacity = 0;
+  oppL.style.backgroundImage = '';
+  oppR.style.backgroundImage = '';
 }
 
 /********* PREVIEW de fondo (solo lado de destino) *********/
@@ -277,8 +338,6 @@ function previewStaticsFor(direction){
     const nextV = nextViewFrom(view);
     const nextI = indicesFromView(nextV);
 
-    // Mostrar ya el destino en la DERECHA (Rnext),
-    // mantener la IZQUIERDA como Lcur (si portada, usamos right actual a la izquierda visual durante la apertura)
     book.classList.remove('single'); // abrir si venimos de portada
     const leftIdx  = cur.left || cur.right;  // portada: “nace” a partir de la 1
     const rightIdx = nextI.right;
@@ -288,8 +347,6 @@ function previewStaticsFor(direction){
     const prevV = prevViewFrom(view);
     const prevI = indicesFromView(prevV);
 
-    // Mostrar ya el destino en la IZQUIERDA (Lprev),
-    // mantener la DERECHA como Rcur
     book.classList.remove('single');
     const leftIdx  = prevI.left;
     const rightIdx = cur.right;
@@ -304,7 +361,7 @@ function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
   isAnimating = true;
   book.classList.add('dragging');
 
-  const refs = makeTurnOverlay(direction); // incluye dimL/dimR
+  const refs = makeTurnOverlay(direction);
   const t0 = performance.now();
 
   function frame(now){
@@ -393,7 +450,7 @@ book.addEventListener('wheel', (e)=>{
 }, { passive:false });
 
 /********* Drag por borde *********/
-let drag = null; // {dir, overlay, shade, rect, startX, t, deg, pointerId, preview}
+let drag = null; // {dir, refs, rect, startX, t, deg, pointerId, preview}
 
 function startDrag(side, e){
   if (isAnimating) return;
