@@ -1,5 +1,5 @@
 :root{
-  /* AR base: el JS seteará --page-ar; el libro usa siempre AR de spread */
+  /* El JS fijará --page-ar a partir de la primera imagen */
   --page-ar: 2/3;                            /* ancho/alto de UNA página */
   --book-ar: calc(2 * var(--page-ar));       /* spread = dos páginas lado a lado */
 
@@ -21,6 +21,9 @@
   --spin-base: rgba(0,0,0,.14);
   --spin-fg:   #6f6f6f;
   --spin-bg:   rgba(255,255,255,.75);
+
+  /* margen del overlay de la hoja (para que no se corte), lo recorta clip-path del libro */
+  --turn-outset: 16px;
 }
 
 *{box-sizing:border-box}
@@ -46,13 +49,14 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 .stack{display:flex;flex-direction:column;align-items:center;gap:var(--bar-gap);width:100%}
 
-/* Libro: SIEMPRE usa AR de spread; en portada la izquierda no existe */
+/* Libro: AR de spread SIEMPRE; en portada ocultamos la izquierda
+   Recortamos TODO el contenido al borde del libro para que no “sangren” sombras */
 .book{
   position:relative;width:min(96vw,1280px);aspect-ratio:var(--book-ar);
   background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
-  overflow:hidden;perspective:2200px
+  overflow:visible; /* permitimos crecer overlay, pero recortamos con clip-path */
+  clip-path: inset(0 round var(--radius));
 }
-.book.dragging{ overflow:visible; } /* para que no se corte la hoja durante drag */
 .book.single .page.left{ display:none; }
 
 .gutter{
@@ -79,17 +83,15 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .sheet .back{ content:""; position:absolute; inset:0; background:#fff; transform:rotateY(180deg); backface-visibility:hidden }
 .sheet .edge{ position:absolute; top:0; bottom:0; width:3px; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd); transform:translateZ(0.5px) }
 .page.left .sheet .edge{ left:0; right:auto }
-.sheet .foldShade{ position:absolute; inset:0; pointer-events:none; opacity:0; background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
-.page.left .sheet .foldShade{ background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
 
-/* Overlays de oscurecimiento estático (los gradientes se setean por JS) */
+/* Sombra estática (S_PE1/S_PE2) – el JS pone el gradiente y la opacidad */
 .oppositeShade{
   position:absolute; inset:0; pointer-events:none; opacity:0;
-  background:#000; /* fallback; el JS pone background-image con linear-gradient */
+  background:#000; /* fallback; el JS aplica background-image con linear-gradient */
   transition: opacity .12s linear;
 }
 
-/* Franja de ARRASTRE por BORDE (vertical completa, estrecha ~9%) */
+/* Zonas de arrastre (verticales, estrechas ~9%) */
 .drag-zone{
   position:absolute; top:0; height:100%; width:9%;
   z-index:8; opacity:0; cursor:ew-resize; touch-action:none;
@@ -109,7 +111,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .spinner.hidden{ opacity:0; transform:translate(-50%,-50%) scale(.9); pointer-events:none }
 @keyframes spin { to { transform:translate(-50%,-50%) rotate(360deg) } }
 
-/* Barra inferior: más delgada y 3× más abajo */
+/* Barra inferior */
 .bar{width:100%;display:flex;justify-content:center;}
 .bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:8px 12px 10px}
 .rail{ position:relative;width:min(96vw,1280px);height:var(--bar-h);border-radius:999px;background:var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08) }
@@ -127,14 +129,14 @@ button{border:0;background:none;padding:0;cursor:pointer}
   background:#000;
 }
 
-/* ============ HOJA OVERLAY (flip único) ============ */
+/* ============ HOJA OVERLAY (giro único) ============ */
 .turn{
-  /* ampliamos el canvas del overlay para que no se "corte" en bordes */
-  position:absolute; inset:-24px; z-index:9; pointer-events:none;
+  /* ampliamos un poco el canvas; clip-path del libro recorta todo al borde */
+  position:absolute; inset:calc(-1 * var(--turn-outset)); z-index:9; pointer-events:none;
   transform-style:preserve-3d;
 }
 .turn .face{
-  position:absolute; inset:24px; /* compensa el inset del .turn */
+  position:absolute; inset:var(--turn-outset); /* compensa el inset de .turn */
   backface-visibility:hidden;
   display:grid; grid-template-columns:1fr 1fr;
 }
@@ -143,28 +145,28 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .turn .half.left{ grid-column:1 }
 .turn .half.right{ grid-column:2 }
 
-/* Sombra del pliegue SOLO sobre la hoja que gira */
+/* Sombra del pliegue (S_FOLD) pegada a la hoja */
 .turn .turnShade{
-  position:absolute; top:24px; bottom:24px; width:50%;
-  left:calc(50% + 24px); /* R→L por defecto */
+  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); width:50%;
+  left:calc(50% + var(--turn-outset)); /* R→L por defecto */
   pointer-events:none; opacity:0;
   background:
     radial-gradient(60% 140% at 50% 50%, rgba(0,0,0,.20), transparent 60%),
     linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
 }
-.turn.backward .turnShade{ left:24px; transform:scaleX(-1); }
+.turn.backward .turnShade{ left:var(--turn-outset); transform:scaleX(-1); }
 
-/* Dim para mitades de la hoja que gira (PF1/PF2) */
+/* Sombras sobre mitades de la hoja que gira (S_PF1/S_PF2) */
 .turn .dim{
-  position:absolute; top:24px; bottom:24px; background:#000; opacity:0; pointer-events:none;
+  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); background:#000; opacity:0; pointer-events:none;
 }
-.turn .dim.left  { left:24px; right:calc(50% + 24px); }
-.turn .dim.right { left:calc(50% + 24px); right:24px; }
+.turn .dim.left  { left:var(--turn-outset); right:calc(50% + var(--turn-outset)); }
+.turn .dim.right { left:calc(50% + var(--turn-outset)); right:var(--turn-outset); }
 
-/* Flechas laterales (sin cápsula, con sombrita), a la altura de la barra */
+/* Flechas laterales (alineadas con el libro), misma línea Y que la barra */
 .edge-hint{
   position:fixed; z-index:11;
-  bottom: calc(var(--bar-gap) - var(--bar-h) - 2px); /* misma “línea Y” de la barra */
+  bottom: calc(var(--bar-gap) - var(--bar-h) - 2px);
   font-size: 28px; line-height:1;
   color:#222; text-shadow: 0 2px 6px rgba(0,0,0,.35);
   padding: 2px 4px;

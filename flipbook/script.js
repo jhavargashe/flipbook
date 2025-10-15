@@ -29,8 +29,8 @@ const imgR   = document.getElementById('img-right');
 const spinL  = document.getElementById('spin-left');
 const spinR  = document.getElementById('spin-right');
 
-const oppL   = pageLeft .querySelector('.oppositeShade');   // PE1
-const oppR   = pageRight.querySelector('.oppositeShade');   // PE2
+const oppL   = pageLeft .querySelector('.oppositeShade');   // S_PE1
+const oppR   = pageRight.querySelector('.oppositeShade');   // S_PE2
 
 const slider = document.getElementById('slider');
 const fill   = document.getElementById('fill');
@@ -55,6 +55,7 @@ let pageAR = 2/3;
 
 /********* Util *********/
 const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const clamp01 = x => Math.max(0, Math.min(1, x));
 const TOTAL = ()=> pages.length - 1;
 
 function setPageARFrom(img){
@@ -78,7 +79,7 @@ async function findOne(n){
   return null;
 }
 
-/* precarga avanzada */
+/* Precarga avanzada (ObjectURL + decode + LRU) */
 const preparedURL = new Map();
 const preparedLRU = [];
 const PREP_LIMIT = 40;
@@ -188,22 +189,17 @@ function render(){
   applyBookARClass();
   const {left,right} = indicesFromView(view);
   paintStatic(left, right);
-  // reset fades
+  // reset sombras estáticas
   oppL.style.opacity = 0; oppR.style.opacity = 0;
   oppL.style.backgroundImage = '';
   oppR.style.backgroundImage = '';
   updateUI();
 }
 
-/********* Helpers de sombra (gradiente + animación) *********/
-const clamp01 = x => Math.max(0, Math.min(1, x));
-
-/**
- * Pinta un sombreado lineal en un elemento.
- * dir: 'LR' (izq→der, izquierda más oscura) o 'RL' (der→izq)
- * alphaMax: tope del gradiente (ej. 0.30 o 0.60)
- * vis: factor de animación (0..1) que hace aparecer/desaparecer ese gradiente
- */
+/********* Sombras (gradiente + animación) *********/
+/* Dir: 'LR' (izq oscura → der claro) o 'RL' (der oscura → izq claro)
+   alphaMax: tope (0..1) — PF=0.30, PE=0.60
+   vis: factor animado (0..1) — cuánto se muestra el gradiente */
 function setLinearShade(el, dir, alphaMax, vis){
   if (!el) return;
   const a = clamp01(alphaMax);
@@ -215,7 +211,7 @@ function setLinearShade(el, dir, alphaMax, vis){
   el.style.opacity = v;
 }
 
-/********* Overlay y animación (incluye PF1/PF2 y sombras PE1/PE2) *********/
+/********* Overlay y animación (incluye S_FOLD + S_PF1/S_PF2 + S_PE1/S_PE2) *********/
 function makeTurnOverlay(direction){
   const turn = document.createElement('div');
   turn.className = 'turn';
@@ -230,9 +226,10 @@ function makeTurnOverlay(direction){
   const bR = document.createElement('img'); bR.className='half right';
   front.append(fL,fR); back.append(bL,bR);
 
+  // S_FOLD
   const shade = document.createElement('div'); shade.className='turnShade';
 
-  // Overlays de “material” por mitad (PF1/PF2)
+  // S_PF1 / S_PF2 (dimers por mitad)
   const dimL = document.createElement('div'); dimL.className = 'dim left';
   const dimR = document.createElement('div'); dimR.className = 'dim right';
 
@@ -260,93 +257,82 @@ function makeTurnOverlay(direction){
   return {turn, shade, fL, fR, bL, bR, dimL, dimR};
 }
 
-/* Sombras con tu convención (CN=0°, R→L: 90→0→-90, L→R: -90→0→90) */
+/* Sombras con convención:
+   Adelante (R→L): deg 0→-180, phi = deg + 90 → [90→0→-90]
+   Atrás (L→R):   deg 0→+180, phi = deg - 90 → [-90→0→90] */
 function setTurnDeg(turnEl, shadeEl, deg, direction, refs){
-  // Rotamos la hoja
+  // Rotación de la hoja
   turnEl.style.transform = `rotateY(${deg}deg)`;
 
-  // Sombra del pliegue (fuerte en CN, suave al inicio/fin)
+  // S_FOLD: pico en CN
   const k = Math.sin(Math.min(Math.PI, (Math.abs(deg)/180)*Math.PI)); // 0..1..0
   shadeEl.style.opacity = 0.50 * k;
 
   // Topes
-  const PF_MAX = 0.30; // PF1/PF2
-  const PE_MAX = 0.60; // PE1/PE2
+  const PF_MAX = 0.30; // S_PF1/S_PF2
+  const PE_MAX = 0.60; // S_PE1/S_PE2
 
-  // Normalización del ángulo a tu convención
+  // Ángulo normalizado
   const phi = (direction === 'forward') ? (deg + 90) : (deg - 90);
 
-  // Progresos de fase
-  // Fase A: se levanta (→ CN)
+  // Animaciones de fase (0..1)
+  // Fase A: se levanta → CN
   const tA = clamp01( (direction === 'forward')
     ? (phi >  0 ? (90 - phi) / 90 : 0)   // forward, 90→0
     : (phi <  0 ? (phi + 90) / 90 : 0) );// backward, -90→0
-
-  // Fase B: cae (desde CN)
+  // Fase B: cae desde CN
   const tB = clamp01( (direction === 'forward')
     ? (phi <  0 ? (-phi) / 90     : 0)   // forward, 0→-90
     : (phi >  0 ? (phi) / 90       : 0) );// backward, 0→+90
 
-  const { dimL, dimR } = refs; // PF2=dimL, PF1=dimR en forward (y espejo en backward)
+  // S_PF1 / S_PF2
+  const { dimL, dimR } = refs;
 
   if (direction === 'forward'){
-    // ---- FORWARD (R→L) ----
-    // FASE A (90→0)
-    // PF1 = mitad derecha (dimR), grad L→R, anim 0→1
-    setLinearShade(dimR, 'LR', PF_MAX, tA);
-    // PF2 = mitad izquierda (dimL), grad R→L, anim 0→1
-    setLinearShade(dimL, 'RL', PF_MAX, tA);
-    // PE2 = derecha estática (oppR), grad L→R, anim 1→0
-    setLinearShade(oppR, 'LR', PE_MAX, (tA > 0 ? (1 - tA) : 0));
+    /* R→L
+       Fase A (90→0): S_PF1(LR) y S_PF2(RL) suben 0→1; S_PE2(LR) baja 1→0
+       Fase B (0→-90): S_PF1/S_PF2 0→1; S_PE1(RL) 0→1 */
+    setLinearShade(dimR, 'LR', PF_MAX, tA);         // S_PF1
+    setLinearShade(dimL, 'RL', PF_MAX, tA);         // S_PF2
+    setLinearShade(oppR, 'LR', PE_MAX, (tA>0 ? 1-tA : 0)); // S_PE2 limpia
 
-    // FASE B (0→-90)
-    // PF1 y PF2 siguen “material” 0→1
-    setLinearShade(dimR, 'LR', PF_MAX, tB);
-    setLinearShade(dimL, 'RL', PF_MAX, tB);
-    // PE1 = izquierda estática (oppL), grad R→L, anim 0→1
-    setLinearShade(oppL, 'RL', PE_MAX, tB);
-
+    setLinearShade(dimR, 'LR', PF_MAX, tB);         // S_PF1 (fase B)
+    setLinearShade(dimL, 'RL', PF_MAX, tB);         // S_PF2 (fase B)
+    setLinearShade(oppL, 'RL', PE_MAX, tB);         // S_PE1 aparece
   } else {
-    // ---- BACKWARD (L→R) ----
-    // FASE A (-90→0)
-    // PF1 = mitad izquierda (dimL), grad R→L, anim 0→1
-    setLinearShade(dimL, 'RL', PF_MAX, tA);
-    // PF2 = mitad derecha (dimR), grad L→R, anim 0→1
-    setLinearShade(dimR, 'LR', PF_MAX, tA);
-    // PE1 = izquierda estática (oppL), grad R→L, anim 1→0
-    setLinearShade(oppL, 'RL', PE_MAX, (tA > 0 ? (1 - tA) : 0));
+    /* L→R (espejo)
+       Fase A (-90→0): S_PF1(RL) y S_PF2(LR) 0→1; S_PE1(RL) 1→0
+       Fase B (0→90):  S_PF1/S_PF2 0→1; S_PE2(LR) 0→1 */
+    setLinearShade(dimL, 'RL', PF_MAX, tA);         // S_PF1
+    setLinearShade(dimR, 'LR', PF_MAX, tA);         // S_PF2
+    setLinearShade(oppL, 'RL', PE_MAX, (tA>0 ? 1-tA : 0)); // S_PE1 limpia
 
-    // FASE B (0→+90)
-    setLinearShade(dimL, 'RL', PF_MAX, tB);
-    setLinearShade(dimR, 'LR', PF_MAX, tB);
-    // PE2 = derecha estática (oppR), grad L→R, anim 0→1
-    setLinearShade(oppR, 'LR', PE_MAX, tB);
+    setLinearShade(dimL, 'RL', PF_MAX, tB);         // S_PF1 (fase B)
+    setLinearShade(dimR, 'LR', PF_MAX, tB);         // S_PF2 (fase B)
+    setLinearShade(oppR, 'LR', PE_MAX, tB);         // S_PE2 aparece
   }
 }
 
-function clearFades(){
+function clearStaticShades(){
   oppL.style.opacity = 0; oppR.style.opacity = 0;
   oppL.style.backgroundImage = '';
   oppR.style.backgroundImage = '';
 }
 
-/********* PREVIEW de fondo (solo lado de destino) *********/
+/********* PREVIEW de fondo (páginas estáticas hacia destino) *********/
 function previewStaticsFor(direction){
   const cur = indicesFromView(view);
-
   if (direction==='forward'){
     const nextV = nextViewFrom(view);
     const nextI = indicesFromView(nextV);
-
     book.classList.remove('single'); // abrir si venimos de portada
-    const leftIdx  = cur.left || cur.right;  // portada: “nace” a partir de la 1
+    const leftIdx  = cur.left || cur.right;   // portada: nace a partir de la 1
     const rightIdx = nextI.right;
     paintStatic(leftIdx, rightIdx);
     return nextV;
   } else {
     const prevV = prevViewFrom(view);
     const prevI = indicesFromView(prevV);
-
     book.classList.remove('single');
     const leftIdx  = prevI.left;
     const rightIdx = cur.right;
@@ -355,11 +341,10 @@ function previewStaticsFor(direction){
   }
 }
 
-/********* Animación *********/
+/********* Animación (click) *********/
 function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
   if (isAnimating) return;
   isAnimating = true;
-  book.classList.add('dragging');
 
   const refs = makeTurnOverlay(direction);
   const t0 = performance.now();
@@ -372,8 +357,7 @@ function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
     else{
       Promise.resolve(gatePromise).then(()=>{
         refs.turn.remove(); isAnimating = false;
-        clearFades();
-        book.classList.remove('dragging');
+        clearStaticShades();
         onDone && onDone();
       });
     }
@@ -430,7 +414,7 @@ document.addEventListener('keydown', e=>{
   if(e.key==='ArrowLeft')  goPrev();
 });
 
-/* Click simple dentro del libro */
+/* Click simple dentro del libro: mitad izq/der */
 book.addEventListener('click', (e)=>{
   if (isAnimating || suppressClick) return;
   const rect = book.getBoundingClientRect();
@@ -458,12 +442,11 @@ function startDrag(side, e){
   if (side==='right' && !canNext()) return;
 
   suppressClick = true;
-  book.classList.add('dragging');
 
   const pointerId = e.pointerId;
   const dir = (side==='right') ? 'forward' : 'backward';
 
-  // preview de fondo (solo lado de destino)
+  // preview de fondo (solo destino)
   const targetV = previewStaticsFor(dir);
 
   const rect = book.getBoundingClientRect();
@@ -517,8 +500,7 @@ function endDrag(e){
       else {
         Promise.resolve(gate).then(()=>{
           refs.turn.remove(); isAnimating=false;
-          clearFades();
-          book.classList.remove('dragging');
+          clearStaticShades();
           view = preview; render();
         });
       }
@@ -535,8 +517,7 @@ function endDrag(e){
       if (k<1) requestAnimationFrame(frame);
       else {
         refs.turn.remove(); isAnimating=false;
-        clearFades();
-        book.classList.remove('dragging');
+        clearStaticShades();
         render();
       }
     }

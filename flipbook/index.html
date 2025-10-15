@@ -18,15 +18,18 @@
     </div>
 
     <div class="stack">
-      <!-- data-start="cover" | "spread"  +  data-initial-spread="1-2"|"2-3" -->
+      <!-- Config de inicio
+           data-start="cover" | "spread"
+           data-initial-spread="1-2" | "2-3" -->
       <section id="book" class="book"
         data-start="cover"
         data-initial-spread="2-3"
         aria-label="Flipbook">
 
+        <!-- Viñeta estática: puedes ocultarla con .gutter{display:none} -->
         <span class="gutter"></span>
 
-        <!-- Izquierda (estática) -->
+        <!-- Página izquierda (estática) -->
         <div id="page-left" class="page left">
           <div class="sheet">
             <img id="img-left" alt="">
@@ -34,11 +37,12 @@
             <div class="back"></div>
             <div class="foldShade"></div>
           </div>
+          <!-- S_PE1 -->
           <div class="oppositeShade"></div>
           <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Derecha (estática) -->
+        <!-- Página derecha (estática) -->
         <div id="page-right" class="page right">
           <div class="sheet">
             <img id="img-right" alt="">
@@ -46,16 +50,17 @@
             <div class="back"></div>
             <div class="foldShade"></div>
           </div>
+          <!-- S_PE2 -->
           <div class="oppositeShade"></div>
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Zonas de arrastre por borde (vertical, estrechas) -->
+        <!-- Zonas de arrastre por Borde (verticales, estrechas) -->
         <div id="drag-left"  class="drag-zone left"  aria-label="Arrastrar atrás"></div>
         <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
       </section>
 
-      <!-- Barra inferior: más delgada y 3× más baja -->
+      <!-- Barra inferior (más delgada y 3× más separada del libro) -->
       <nav class="bar">
         <div class="bar-box">
           <div class="rail">
