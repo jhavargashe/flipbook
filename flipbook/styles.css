@@ -1,6 +1,5 @@
 :root{
-  /* El JS fijará --page-ar a partir de la primera imagen */
-  --page-ar: 2/3;                            /* ancho/alto de UNA página */
+  --page-ar: 2/3;                            /* ancho/alto de UNA página (JS lo fija) */
   --book-ar: calc(2 * var(--page-ar));       /* spread = dos páginas lado a lado */
 
   --radius: 16px;
@@ -11,19 +10,16 @@
   --tc-shadow: 0 6px 20px rgba(0,0,0,.12);
   --icon-bg:#fff; --icon-fg:#222; --icon-bd:#d9d9d9;
 
-  /* Barra más delgada y 3× separación respecto al libro */
   --bar-h: 10px;
   --bar-gap: calc(var(--bar-h) * 3 + 14px);
 
   --rail:#cbcbcb; --fill:#6f6f6f;
 
-  /* spinner */
   --spin-base: rgba(0,0,0,.14);
   --spin-fg:   #6f6f6f;
   --spin-bg:   rgba(255,255,255,.75);
 
-  /* margen del overlay de la hoja (para que no se corte), lo recorta clip-path del libro */
-  --turn-outset: 16px;
+  --turn-outset: 16px; /* margen extra del overlay */
 }
 
 *{box-sizing:border-box}
@@ -49,12 +45,12 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 .stack{display:flex;flex-direction:column;align-items:center;gap:var(--bar-gap);width:100%}
 
-/* Libro: AR de spread SIEMPRE; en portada ocultamos la izquierda
-   Recortamos TODO el contenido al borde del libro para que no “sangren” sombras */
+/* Libro: AR de spread SIEMPRE; en portada ocultamos la izquierda.
+   Recortamos TODO (incl. overlay) al borde del libro. */
 .book{
   position:relative;width:min(96vw,1280px);aspect-ratio:var(--book-ar);
   background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
-  overflow:visible; /* permitimos crecer overlay, pero recortamos con clip-path */
+  overflow:visible; 
   clip-path: inset(0 round var(--radius));
 }
 .book.single .page.left{ display:none; }
@@ -62,10 +58,25 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .gutter{
   position:absolute;inset:0;z-index:1;pointer-events:none;
   background:
-    linear-gradient(90deg, rgba(0,0,0,.08), transparent 12%, transparent 88%, rgba(0,0,0,.08)),
-    radial-gradient(120px 100% at 50% 0, rgba(0,0,0,.14), transparent 60%),
-    radial-gradient(120px 100% at 50% 100%, rgba(0,0,0,.14), transparent 60%);
-  opacity:.33
+    linear-gradient(90deg, rgba(0,0,0,.05), transparent 12%, transparent 88%, rgba(0,0,0,.05));
+  opacity:.35;
+}
+
+/* Sombras proyectadas (no rotan) */
+.cast{
+  position:absolute; top:0; bottom:0; width:50%; pointer-events:none; opacity:0;
+  z-index:2; /* por encima de la página, por debajo de la hoja que gira */
+  transition: opacity .08s linear;
+}
+.cast.left  { left:0;
+  background:
+    radial-gradient(120% 100% at 100% 50%, rgba(0,0,0,.35), rgba(0,0,0,0) 65%),
+    linear-gradient(90deg, rgba(0,0,0,.18), rgba(0,0,0,0) 45%);
+}
+.cast.right { right:0;
+  background:
+    radial-gradient(120% 100% at   0% 50%, rgba(0,0,0,.35), rgba(0,0,0,0) 65%),
+    linear-gradient(270deg, rgba(0,0,0,.18), rgba(0,0,0,0) 45%);
 }
 
 /* Mitades estáticas */
@@ -73,7 +84,6 @@ button{border:0;background:none;padding:0;cursor:pointer}
   position:absolute; top:0; bottom:0; width:50%; height:100%;
   z-index:2; transform-style:preserve-3d;
 }
-.page.turning{ z-index:7 }
 .page.left  { left:0;  transform-origin:right center }
 .page.right { right:0; transform-origin:left  center }
 
@@ -84,14 +94,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .sheet .edge{ position:absolute; top:0; bottom:0; width:3px; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd); transform:translateZ(0.5px) }
 .page.left .sheet .edge{ left:0; right:auto }
 
-/* Sombra estática (S_PE1/S_PE2) – el JS pone el gradiente y la opacidad */
-.oppositeShade{
-  position:absolute; inset:0; pointer-events:none; opacity:0;
-  background:#000; /* fallback; el JS aplica background-image con linear-gradient */
-  transition: opacity .12s linear;
-}
-
-/* Zonas de arrastre (verticales, estrechas ~9%) */
+/* Zonas de arrastre */
 .drag-zone{
   position:absolute; top:0; height:100%; width:9%;
   z-index:8; opacity:0; cursor:ew-resize; touch-action:none;
@@ -131,12 +134,11 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 /* ============ HOJA OVERLAY (giro único) ============ */
 .turn{
-  /* ampliamos un poco el canvas; clip-path del libro recorta todo al borde */
   position:absolute; inset:calc(-1 * var(--turn-outset)); z-index:9; pointer-events:none;
   transform-style:preserve-3d;
 }
 .turn .face{
-  position:absolute; inset:var(--turn-outset); /* compensa el inset de .turn */
+  position:absolute; inset:var(--turn-outset);
   backface-visibility:hidden;
   display:grid; grid-template-columns:1fr 1fr;
 }
@@ -145,23 +147,25 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .turn .half.left{ grid-column:1 }
 .turn .half.right{ grid-column:2 }
 
-/* Sombra del pliegue (S_FOLD) pegada a la hoja */
-.turn .turnShade{
-  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); width:50%;
-  left:calc(50% + var(--turn-outset)); /* R→L por defecto */
-  pointer-events:none; opacity:0;
+/* Sombra del pliegue (pegada a la hoja) */
+.turn .foldShadow{
+  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); width:52%;
+  left:calc(50% + var(--turn-outset));
   background:
-    radial-gradient(60% 140% at 50% 50%, rgba(0,0,0,.20), transparent 60%),
-    linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
+    radial-gradient(70% 150% at 50% 50%, rgba(0,0,0,.28), rgba(0,0,0,0) 62%),
+    linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 40%);
+  opacity:0; pointer-events:none;
 }
-.turn.backward .turnShade{ left:var(--turn-outset); transform:scaleX(-1); }
+.turn.backward .foldShadow{ left:var(--turn-outset); transform:scaleX(-1); }
 
-/* Sombras sobre mitades de la hoja que gira (S_PF1/S_PF2) */
-.turn .dim{
-  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); background:#000; opacity:0; pointer-events:none;
+/* Highlight fino junto al pliegue */
+.turn .foldHighlight{
+  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); width:3%;
+  left:calc(50% + var(--turn-outset));
+  background: linear-gradient(90deg, rgba(255,255,255,.55), rgba(255,255,255,0));
+  opacity:0; pointer-events:none; mix-blend-mode:screen;
 }
-.turn .dim.left  { left:var(--turn-outset); right:calc(50% + var(--turn-outset)); }
-.turn .dim.right { left:calc(50% + var(--turn-outset)); right:var(--turn-outset); }
+.turn.backward .foldHighlight{ left:auto; right:var(--turn-outset); transform:scaleX(-1); }
 
 /* Flechas laterales (alineadas con el libro), misma línea Y que la barra */
 .edge-hint{

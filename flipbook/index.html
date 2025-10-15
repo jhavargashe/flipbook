@@ -26,8 +26,12 @@
         data-initial-spread="2-3"
         aria-label="Flipbook">
 
-        <!-- Viñeta estática: puedes ocultarla con .gutter{display:none} -->
+        <!-- Viñeta general muy sutil (puedes ocultarla con .gutter{display:none}) -->
         <span class="gutter"></span>
+
+        <!-- Sombras PROYECTADAS sobre páginas estáticas (no rotan) -->
+        <div id="cast-left"  class="cast left"  aria-hidden="true"></div>
+        <div id="cast-right" class="cast right" aria-hidden="true"></div>
 
         <!-- Página izquierda (estática) -->
         <div id="page-left" class="page left">
@@ -35,10 +39,7 @@
             <img id="img-left" alt="">
             <div class="edge"></div>
             <div class="back"></div>
-            <div class="foldShade"></div>
           </div>
-          <!-- S_PE1 -->
-          <div class="oppositeShade"></div>
           <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
 
@@ -48,19 +49,16 @@
             <img id="img-right" alt="">
             <div class="edge"></div>
             <div class="back"></div>
-            <div class="foldShade"></div>
           </div>
-          <!-- S_PE2 -->
-          <div class="oppositeShade"></div>
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Zonas de arrastre por Borde (verticales, estrechas) -->
+        <!-- Zonas de arrastre por borde (verticales, estrechas) -->
         <div id="drag-left"  class="drag-zone left"  aria-label="Arrastrar atrás"></div>
         <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
       </section>
 
-      <!-- Barra inferior (más delgada y 3× más separada del libro) -->
+      <!-- Barra inferior (delgada y separada del libro) -->
       <nav class="bar">
         <div class="bar-box">
           <div class="rail">
@@ -71,7 +69,7 @@
       </nav>
     </div>
 
-    <!-- Flechas laterales (sin cápsula), alineadas al ancho del libro y a la altura de la barra -->
+    <!-- Flechas laterales (alineadas al ancho del libro, sin cápsula) -->
     <button id="edge-left"  class="edge-hint left"  title="Atrás">❮</button>
     <button id="edge-right" class="edge-hint right" title="Adelante">❯</button>
   </div>
