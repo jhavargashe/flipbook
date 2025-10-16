@@ -17,60 +17,65 @@
       <button id="btn-last"  class="icon" title="Última">≫</button>
     </div>
 
+    <!-- Libro + barra (centrados) -->
     <div class="stack">
-      <!-- data-start="cover" | "spread", data-initial-spread="1-2" | "2-3" -->
-      <section id="book" class="book"
-        data-start="cover"
-        data-initial-spread="2-3"
-        aria-label="Flipbook">
-
+      <!-- Visor único. Carga el libro segun ?book=<slug> => books/<slug>/page-001.jpg ... -->
+      <section id="book" class="book" aria-label="Flipbook">
+        <!-- Viñeta general opcional (puedes ocultarla con .gutter{display:none}) -->
         <span class="gutter"></span>
 
-        <!-- Página izquierda (estática) -->
+        <!-- IZQUIERDA (estática) -->
         <div id="page-left" class="page left">
           <div class="sheet">
             <img id="img-left" alt="">
             <div class="edge"></div>
             <div class="back"></div>
+            <div class="foldShade"></div>
           </div>
-          <!-- Sombra estática animable (PE1) -->
-          <div class="shadow-static left"  aria-hidden="true"></div>
+          <!-- Sombra estática de “lado de atrás” (PE1) -->
+          <div class="shadow-static left"></div>
+          <!-- Loader por página -->
           <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Página derecha (estática) -->
+        <!-- DERECHA (estática) -->
         <div id="page-right" class="page right">
           <div class="sheet">
             <img id="img-right" alt="">
             <div class="edge"></div>
             <div class="back"></div>
+            <div class="foldShade"></div>
           </div>
-          <!-- Sombra estática animable (PE2) -->
-          <div class="shadow-static right" aria-hidden="true"></div>
+          <!-- Sombra estática de “lado de atrás” (PE2) -->
+          <div class="shadow-static right"></div>
+          <!-- Loader por página -->
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Zonas de arrastre por borde -->
+        <!-- Zonas de arrastre vertical por borde (estrechas) -->
         <div id="drag-left"  class="drag-zone left"  aria-label="Arrastrar atrás"></div>
         <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
+
+        <!-- Skeleton inicial mientras no sabemos el AR (se sustituye al medir page-001) -->
+        <div id="skeleton" class="book-skeleton" aria-hidden="true">
+          <div class="sk-left"></div><div class="sk-right"></div>
+        </div>
       </section>
 
-      <!-- Flecha — barra — flecha (alineado con el libro) -->
-      <div class="bottom-band">
-        <button id="edge-left"  class="edge-hint" title="Atrás">❮</button>
-
-        <nav class="bar">
-          <div class="bar-box">
-            <div class="rail">
-              <div class="fill" id="fill"></div>
-              <input id="slider" class="slider" type="range" min="0" value="0" step="1" />
-            </div>
+      <!-- Barra inferior (delgada y más separada) -->
+      <nav class="bar">
+        <div class="bar-box">
+          <div class="rail">
+            <div class="fill" id="fill"></div>
+            <input id="slider" class="slider" type="range" min="0" value="0" step="1" />
           </div>
-        </nav>
-
-        <button id="edge-right" class="edge-hint" title="Adelante">❯</button>
-      </div>
+        </div>
+      </nav>
     </div>
+
+    <!-- Flechas laterales minimalistas, alineadas con el libro (fuera del libro) -->
+    <button id="edge-left"  class="edge-hint left"  title="Atrás">❮</button>
+    <button id="edge-right" class="edge-hint right" title="Adelante">❯</button>
   </div>
 
   <script src="script.js" defer></script>

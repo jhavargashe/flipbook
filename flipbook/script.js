@@ -1,582 +1,191 @@
-/********* Config *********/
-const AUTO_DETECT = true;
-const MAX_PAGES   = 300;
+:root{
+  /* AR base: el JS seteará --page-ar al medir la primera imagen real */
+  --page-ar: 2/3;                            /* ancho/alto de UNA página */
+  --book-ar: calc(2 * var(--page-ar));       /* spread = dos páginas lado a lado */
 
-const FLIP_MS            = 640;
-const FLIP_MS_DRAG_DONE  = 380;
-const FLIP_MS_RETURN     = 260;
-const DRAG_COMPLETE_T    = 0.45;
-const WHEEL_THROTTLE_MS  = 320;
+  --radius: 16px;
+  --shadow: 0 18px 55px rgba(0,0,0,.18);
+  --bg: #f5f6f7;
 
-const NAME_PATTERNS = n => ([`page-${n}`, `page-${String(n).padStart(2,'0')}`, `page-${String(n).padStart(3,'0')}`]);
-const EXT  = ['jpg','jpeg','png','webp'];
-const PATH = base => `assets/pdf-images/${base}`;
+  /* tema claro (fullscreen cambia variables abajo) */
+  --tc-bg: rgba(255,255,255,.92);
+  --tc-shadow: 0 6px 20px rgba(0,0,0,.12);
+  --icon-bg:#fff; --icon-fg:#222; --icon-bd:#d9d9d9;
 
-/********* Estado / refs *********/
-let pages = []; // 1..N (index 0 vacío)
-let isAnimating = false;
-let wheelLockUntil = 0;
-let suppressClick = false;
+  --rail:#cbcbcb; --fill:#6f6f6f;
 
-const viewer = document.getElementById('viewer');
-const book   = document.getElementById('book');
+  /* spinner */
+  --spin-base: rgba(0,0,0,.14);
+  --spin-fg:   #6f6f6f;
+  --spin-bg:   rgba(255,255,255,.75);
 
-const pageLeft  = document.getElementById('page-left');
-const pageRight = document.getElementById('page-right');
-
-const imgL   = document.getElementById('img-left');
-const imgR   = document.getElementById('img-right');
-const spinL  = document.getElementById('spin-left');
-const spinR  = document.getElementById('spin-right');
-
-const slider = document.getElementById('slider');
-const fill   = document.getElementById('fill');
-
-const btnPrev  = document.getElementById('btn-prev');
-const btnNext  = document.getElementById('btn-next');
-const btnFirst = document.getElementById('btn-first');
-const btnLast  = document.getElementById('btn-last');
-const btnFS    = document.getElementById('btn-fs');
-
-const hintL = document.getElementById('edge-left');
-const hintR = document.getElementById('edge-right');
-
-const dragLeft  = document.getElementById('drag-left');
-const dragRight = document.getElementById('drag-right');
-
-const START_MODE     = (book.dataset.start || 'cover').toLowerCase();       // 'cover' | 'spread'
-const INITIAL_SPREAD = (book.dataset.initialSpread || '2-3').toLowerCase(); // '1-2' | '2-3'
-
-let view = { mode: 'cover', pairLeft: 2 };
-let pageAR = 2/3;
-
-/********* Util *********/
-const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
-const TOTAL = ()=> pages.length - 1;
-
-function setPageARFrom(img){
-  const w = img.naturalWidth||1000, h = img.naturalHeight||1500;
-  pageAR = w/h;
-  document.documentElement.style.setProperty('--page-ar', pageAR);
-}
-function applyBookARClass(){
-  if (view.mode==='cover') book.classList.add('single');
-  else                     book.classList.remove('single');
-}
-function exists(url){return new Promise(res=>{const i=new Image();i.onload=()=>res({ok:true,i,url});i.onerror=()=>res({ok:false,url});i.src=url})}
-async function findOne(n){
-  for (const name of NAME_PATTERNS(n))
-    for (const ext of EXT){
-      const u=PATH(`${name}.${ext}`); const r=await exists(u);
-      if(r.ok) return r;
-    }
-  return null;
+  /* sombras (máximos) */
+  --static-shadow-max: 0.85;  /* PE1/PE2 (lado “atrás”) */
+  --dest-shadow-max:   0.65;  /* proyección sobre receptora */
 }
 
-/* Precarga avanzada */
-const preparedURL = new Map();
-const preparedLRU = [];
-const PREP_LIMIT = 40;
-async function prepareImage(url){
-  if (!url || preparedURL.has(url)) return;
-  try{
-    const res = await fetch(url, {cache:'force-cache'});
-    const blob = await res.blob();
-    if (self.createImageBitmap) { try{ await createImageBitmap(blob); }catch{} }
-    const obj = URL.createObjectURL(blob);
-    preparedURL.set(url, obj);
-    preparedLRU.push(url);
-    if (preparedLRU.length>PREP_LIMIT){
-      const old = preparedLRU.shift();
-      const u = preparedURL.get(old);
-      preparedURL.delete(old);
-      URL.revokeObjectURL(u);
-    }
-    const img = new Image(); img.src = obj; if (img.decode){ try{ await img.decode(); }catch{} }
-  }catch(e){}
-}
-const getPreparedURL = url => preparedURL.get(url) || url;
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+button{border:0;background:none;padding:0;cursor:pointer}
 
-/********* Mapeo vista -> índices *********/
-function indicesFromView(v){
-  if (v.mode==='cover') return { left:null, right:1 };
-  const L=v.pairLeft, R=L+1, N=TOTAL();
-  return { left:(L<=N?L:null), right:(R<=N?R:null) };
-}
-function nextViewFrom(v){
-  const N=TOTAL();
-  if (v.mode==='cover') return { mode:'spread', pairLeft:2 };
-  const maxLeft = (N % 2 === 0) ? N-1 : N;
-  return { mode:'spread', pairLeft: Math.min(v.pairLeft+2, maxLeft) };
-}
-function prevViewFrom(v){
-  if (v.mode==='cover') return v;
-  if (v.pairLeft<=2) return { mode:'cover' };
-  return { mode:'spread', pairLeft:v.pairLeft-2 };
-}
-function canNext(){
-  const N=TOTAL();
-  if (N<=0) return false;
-  if (view.mode==='cover') return N>=2;
-  const maxLeft = (N % 2 === 0) ? N-1 : N;
-  return view.pairLeft < maxLeft;
-}
-function canPrev(){ return !(view.mode==='cover'); }
+.viewer{min-height:100vh;display:grid;place-items:center;position:relative}
 
-/********* Render helpers *********/
-function applySrc(img, url, spinner){
-  if (!url){
-    img.removeAttribute('src'); img.style.opacity=0; spinner.classList.add('hidden'); return;
-  }
-  spinner.classList.remove('hidden'); img.style.opacity=0;
-  const finalURL = getPreparedURL(url);
-  img.onload  = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 1; };
-  img.onerror = ()=>{ spinner.classList.add('hidden'); img.style.opacity = 0; };
-  img.decoding = 'async'; img.loading='eager';
-  img.src = finalURL;
-  if (img.complete && img.naturalWidth>0){ spinner.classList.add('hidden'); img.style.opacity=1; }
+/* Botonera superior */
+.top-controls{
+  position:fixed; right:16px; top:16px; z-index:12;
+  display:flex; gap:8px; background:var(--tc-bg);
+  border-radius:12px; padding:6px 8px; box-shadow:var(--tc-shadow);
+  backdrop-filter:blur(6px)
 }
-function paintStatic(leftIndex, rightIndex){
-  if (leftIndex){
-    pageLeft.style.display = '';
-    applySrc(imgL, pages[leftIndex], spinL);
-  } else {
-    pageLeft.style.display = 'none';
-    spinL.classList.add('hidden'); imgL.removeAttribute('src');
-  }
-  if (rightIndex){
-    applySrc(imgR, pages[rightIndex], spinR);
-  } else {
-    applySrc(imgR, null, spinR);
-  }
+.icon{
+  width:38px;height:38px;border-radius:10px;background:var(--icon-bg);color:var(--icon-fg);
+  border:1px solid var(--icon-bd); font-size:18px;line-height:38px;text-align:center;
+  transition:transform .12s ease,opacity .12s ease
 }
-function updateUI(){
-  const N = TOTAL();
-  const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2));
-  if (view.mode==='cover'){ slider.value = 0; fill.style.width = '0%'; }
-  else {
-    const step = Math.max(1, Math.floor((view.pairLeft-2)/2)+1);
-    slider.value = Math.min(spreads, step);
-    const pct = spreads>0 ? (slider.value / spreads) * 100 : 0;
-    fill.style.width = (isFinite(pct)?pct:0)+'%';
-  }
-  slider.max = spreads;
+.icon:disabled{opacity:.35;cursor:not-allowed}
+.icon:hover{transform:translateY(-1px)}
 
-  const atCover = (view.mode==='cover');
-  const atEnd   = (view.mode==='spread') && !canNext();
-  btnPrev.disabled  = atCover;
-  btnFirst.disabled = atCover;
-  btnNext.disabled  = atEnd;
-  btnLast.disabled  = atEnd;
-  hintL.disabled    = atCover;
-  hintR.disabled    = atEnd;
-  dragLeft.style.pointerEvents = atCover ? 'none' : 'auto';
+.stack{display:flex;flex-direction:column;align-items:center;gap:36px;width:100%}
+
+/* Libro: SIEMPRE usa AR de spread; sin perspectiva (plano) */
+.book{
+  position:relative;width:min(96vw,1280px);aspect-ratio:var(--book-ar);
+  background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
+  overflow:hidden; /* durante drag abrimos para que no se corte el overlay */
 }
-function render(){
-  applyBookARClass();
-  const {left,right} = indicesFromView(view);
-  paintStatic(left, right);
-  // reset sombras estáticas cuando no hay giro
-  setStaticShadow('left', 0);
-  setStaticShadow('right', 0);
-  updateUI();
+.book.dragging{ overflow:visible; }
+
+/* Skeleton inicial (antes de medir AR real) */
+.book-skeleton{
+  position:absolute; inset:0; display:grid; grid-template-columns:1fr 1fr; gap:1px;
+  background:linear-gradient(180deg,#ececec,#f7f7f7);
+  z-index:0; pointer-events:none;
+}
+.book[data-ready="true"] .book-skeleton{ display:none; }
+.book-skeleton .sk-left{ background:repeating-linear-gradient(90deg,#f2f2f2,#f2f2f2 12px,#f8f8f8 12px,#f8f8f8 24px) }
+.book-skeleton .sk-right{ background:repeating-linear-gradient(90deg,#f7f7f7,#f7f7f7 12px,#ffffff 12px,#ffffff 24px) }
+
+.gutter{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.08), transparent 12%, transparent 88%, rgba(0,0,0,.08)),
+    radial-gradient(120px 100% at 50% 0, rgba(0,0,0,.14), transparent 60%),
+    radial-gradient(120px 100% at 50% 100%, rgba(0,0,0,.14), transparent 60%);
+  opacity:.33
 }
 
-/********* Sombras auxiliares *********/
-function ensureDestShadow(side){
-  const host = (side==='left') ? pageLeft : pageRight;
-  if (!host) return null;
-  let el = host.querySelector('.shadow-dest');
-  if (!el){
-    el = document.createElement('div');
-    el.className = `shadow-dest ${side}`;
-    host.appendChild(el);
-  }
-  return el;
+/* Mitades estáticas */
+.page{
+  position:absolute; top:0; bottom:0; width:50%; height:100%;
+  z-index:2; transform-style:preserve-3d;
 }
-function clearDestShadows(){
-  const a = pageLeft.querySelector('.shadow-dest');
-  const b = pageRight.querySelector('.shadow-dest');
-  if (a) a.remove();
-  if (b) b.remove();
+.page.left  { left:0;  transform-origin:right center }
+.page.right { right:0; transform-origin:left  center }
+
+.sheet{ position:absolute; inset:0; width:100%; height:100%;
+  backface-visibility:hidden; transform-style:preserve-3d; will-change:transform }
+.sheet img{ position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#fff; opacity:0; transition:opacity .18s ease }
+.sheet .back{ content:""; position:absolute; inset:0; background:#fff; transform:rotateY(180deg); backface-visibility:hidden }
+.sheet .edge{ position:absolute; top:0; bottom:0; width:3px; left:auto; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd); transform:translateZ(0.5px) }
+.page.left .sheet .edge{ left:0; right:auto }
+.sheet .foldShade{ position:absolute; inset:0; pointer-events:none; opacity:0; background:linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
+.page.left .sheet .foldShade{ background:linear-gradient(270deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%) }
+
+/* Sombras estáticas (PE1/PE2) — más fuertes y animables */
+.shadow-static{
+  position:absolute; inset:0; pointer-events:none; opacity:0; z-index:3;
 }
-const staticLeft  = document.querySelector('#page-left  .shadow-static.left');
-const staticRight = document.querySelector('#page-right .shadow-static.right');
-function setStaticShadow(side, opacity){
-  if (side==='left'  && staticLeft)  staticLeft.style.opacity  = String(opacity);
-  if (side==='right' && staticRight) staticRight.style.opacity = String(opacity);
+.shadow-static.left{
+  /* R→L: derecha más oscura sobre la izquierda (gutter hacia adentro) */
+  background:
+    linear-gradient(270deg, rgba(0,0,0,.95), rgba(0,0,0,0) 45%),
+    radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.35), transparent 60%);
 }
-
-/********* Overlay (hoja) *********/
-function makeTurnOverlay(direction){
-  const turn = document.createElement('div');
-  turn.className = 'turn';
-  if (direction==='backward') turn.classList.add('backward');
-
-  // 👇 bisagra realista según dirección
-  turn.style.transformOrigin = (direction==='forward') ? 'right center' : 'left center';
-
-  const front = document.createElement('div'); front.className='face front';
-  const back  = document.createElement('div'); back.className='face back';
-
-  const fL = document.createElement('img'); fL.className='half left';
-  const fR = document.createElement('img'); fR.className='half right';
-  const bL = document.createElement('img'); bL.className='half left';
-  const bR = document.createElement('img'); bR.className='half right';
-  front.append(fL,fR); back.append(bL,bR);
-
-  const ridge = document.createElement('div'); ridge.className='foldRidge';
-
-  const cur   = indicesFromView(view);
-  const nextV = nextViewFrom(view);
-  const prevV = prevViewFrom(view);
-  const nextI = indicesFromView(nextV);
-  const prevI = indicesFromView(prevV);
-
-  if (direction==='forward'){
-    // PF1 = fR (Rcur), PF2 = bL (Lnext)
-    fR.src = getPreparedURL(pages[cur.right]  || '');
-    bL.src = getPreparedURL(pages[nextI.left] || '');
-    fL.style.opacity=0; bR.style.opacity=0;
-  } else {
-    // PF1 = fL (Lcur), PF2 = bR (Rprev)
-    fL.src = getPreparedURL(pages[cur.left]     || '');
-    bR.src = getPreparedURL(pages[prevI.right]  || '');
-    fR.style.opacity=0; bL.style.opacity=0;
-  }
-
-  turn.append(front, back, ridge);
-  book.appendChild(turn);
-
-  const destSide = (direction==='forward') ? 'left' : 'right';
-  const destShadow = ensureDestShadow(destSide);
-
-  return {turn, ridge, destShadow};
+.shadow-static.right{
+  /* L→R: izquierda más oscura sobre la derecha */
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.95), rgba(0,0,0,0) 45%),
+    radial-gradient(80% 140% at 50% 50%, rgba(0,0,0,.35), transparent 60%);
 }
 
-/********* Ángulo firmado y sombras estáticas según tu regla *********/
-function thetaFromDeg(deg){ return deg/2; } // deg ±180 → θ ±90
-
-// PE1 (izquierda): ventana +45° → −90°, de 0 → 1
-function opPE1_forward(theta){
-  if (theta >  45) return 0;
-  if (theta <= -90) return 1;
-  // map +45 -> 0,  -90 -> 1
-  return (45 - theta) / 135;
+/* Franja de arrastre por borde */
+.drag-zone{
+  position:absolute; top:0; height:100%; width:9%;
+  z-index:8; opacity:0; cursor:ew-resize; touch-action:none;
 }
-// PE2 (derecha): ventana +90° → −45°, de 1 → 0
-function opPE2_forward(theta){
-  if (theta >=  90) return 1;
-  if (theta <= -45) return 0;
-  // map +90 -> 1,  -45 -> 0
-  return (theta + 45) / 135;
+.drag-zone.left  { left:0; }
+.drag-zone.right { right:0; }
+
+/* Loader por página */
+.spinner{
+  position:absolute; z-index:6; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:46px; height:46px; border-radius:50%;
+  border:3px solid var(--spin-base); border-top-color:var(--spin-fg);
+  animation: spin .9s linear infinite; box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  background: radial-gradient(closest-side, var(--spin-bg), rgba(255,255,255,0) 70%);
+  transition: opacity .18s ease, transform .18s ease;
 }
+.spinner.hidden{ opacity:0; transform:translate(-50%,-50%) scale(.9); pointer-events:none }
+@keyframes spin { to { transform:translate(-50%,-50%) rotate(360deg) } }
 
-// Para atrás (L→R) espeljamos: usamos -θ y cruzamos lados
-function opStaticByDirection(direction, theta){
-  if (direction==='forward'){
-    return { left: opPE1_forward(theta), right: opPE2_forward(theta) };
-  } else {
-    const tp = -theta; // espejo
-    return { left: opPE2_forward(tp), right: opPE1_forward(tp) };
-  }
-}
+/* Barra inferior (delgada y separada ~ 3x su alto) */
+.bar{width:100%;display:flex;justify-content:center; margin-top: 54px; }
+.bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:10px 12px}
+.rail{ position:relative;width:min(96vw,1280px);height:12px;border-radius:999px;background:var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08) }
+.fill{ position:absolute;left:2px;top:2px;bottom:2px;width:0%;background:var(--fill);border-radius:999px;transition:width .12s linear }
+.slider{ position:absolute;inset:0;width:100%;height:100%;appearance:none;background:transparent;outline:none;cursor:pointer }
+.slider::-webkit-slider-thumb{appearance:none;width:0;height:0}
+.slider::-moz-range-thumb{width:0;height:0;border:0}
 
-/********* Set giro + todas las sombras *********/
-function setTurnDeg(refs, direction, deg){
-  const { turn, ridge, destShadow } = refs;
-
-  // Giro de la hoja
-  turn.style.transform = `rotateY(${deg}deg)`;
-
-  // θ firmado (0 en CN, −90 izq, +90 der)
-  const theta = thetaFromDeg(deg);
-  const absx = Math.min(180, Math.abs(deg));
-  const k = Math.sin((absx/180) * Math.PI); // cresta tipo campana
-
-  // Cresta (pico cerca de CN)
-  ridge.style.opacity = 0.50 * Math.pow(k, 1.2);
-
-  // Proyección en página destino (pico en CN)
-  if (destShadow){
-    const max = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dest-shadow-max')) || 0.65;
-    destShadow.style.opacity = (max * Math.pow(k, 1.0)).toFixed(3);
-  }
-
-  // Sombras estáticas PE1/PE2 con tus ventanas exactas
-  const staticMax = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--static-shadow-max')) || 0.85;
-  const {left, right} = opStaticByDirection(direction, theta);
-  setStaticShadow('left',  (staticMax * Math.max(0, Math.min(1, left ))).toFixed(3));
-  setStaticShadow('right', (staticMax * Math.max(0, Math.min(1, right))).toFixed(3));
+/* Fullscreen: tema oscuro */
+:fullscreen .viewer{
+  --tc-bg: rgba(20,20,20,.88); --tc-shadow: 0 10px 30px rgba(0,0,0,.35);
+  --icon-bg:#111; --icon-fg:#fff; --icon-bd:#0000;
+  --rail:#8d8d8d; --fill:#2a2a2a;
+  --spin-base: rgba(255,255,255,.22); --spin-fg:#e9e9e9; --spin-bg: rgba(0,0,0,.25);
+  background:#000;
 }
 
-/********* PREVIEW estáticos hacia destino *********/
-function previewStaticsFor(direction){
-  const cur = indicesFromView(view);
-  if (direction==='forward'){
-    const nextV = nextViewFrom(view);
-    const nextI = indicesFromView(nextV);
-    book.classList.remove('single');
-    const leftIdx  = cur.left || cur.right;
-    const rightIdx = nextI.right;
-    paintStatic(leftIdx, rightIdx);
-    return nextV;
-  } else {
-    const prevV = prevViewFrom(view);
-    const prevI = indicesFromView(prevV);
-    book.classList.remove('single');
-    const leftIdx  = prevI.left;
-    const rightIdx = cur.right;
-    paintStatic(leftIdx, rightIdx);
-    return prevV;
-  }
+/* ============ HOJA OVERLAY (flip único, plano, hinge en el lomo) ============ */
+.turn{
+  position:absolute; inset:-24px; z-index:9; pointer-events:none;
+  transform-style:preserve-3d;
+  /* hinge: en el centro (lomo) — el JS decide dirección mediante rotateY +/- */
+  transform-origin: 50% 50%;
+}
+.turn .face{
+  position:absolute; inset:24px;
+  backface-visibility:hidden;
+}
+.turn .back{ transform:rotateY(180deg) }
+.turn img{ width:100%; height:100%; object-fit:contain; background:transparent }
+
+/* Cresta del pliegue (solo en hoja activa) */
+.foldRidge, .turn .foldRidge{
+  position:absolute; top:24px; bottom:24px; width:20%;
+  left:40%; pointer-events:none; opacity:0;
+  background:
+    radial-gradient(60% 140% at 50% 50%, rgba(0,0,0,.20), transparent 60%),
+    linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 35%);
 }
 
-/********* Animación (click) *********/
-function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
-  if (isAnimating) return;
-  isAnimating = true;
-
-  const refs = makeTurnOverlay(direction);
-  const t0 = performance.now();
-
-  function frame(now){
-    const t = Math.min(1,(now-t0)/ms);
-    const d = fromDeg + (toDeg-fromDeg)*easeInOut(t);
-    setTurnDeg(refs, direction, d);
-    if(t<1) requestAnimationFrame(frame);
-    else{
-      Promise.resolve(gatePromise).then(()=>{
-        refs.turn.remove(); clearDestShadows();
-        setStaticShadow('left',  0);
-        setStaticShadow('right', 0);
-        isAnimating = false;
-        onDone && onDone();
-      });
-    }
-  }
-  requestAnimationFrame(frame);
+/* Proyección en página receptora (se inyecta dinámicamente) */
+.shadow-dest{
+  position:absolute; inset:0; pointer-events:none; opacity:0; z-index:4;
+  background:
+    radial-gradient(90% 120% at 50% 50%, rgba(0,0,0,.35), transparent 60%),
+    linear-gradient(90deg, rgba(0,0,0,.25), rgba(0,0,0,0) 40%);
 }
 
-/********* Navegación *********/
-function goNext(){
-  if (!canNext() || isAnimating) return;
-
-  const curL = indicesFromView(view).left ?? 1;
-  const gate = (view.mode==='cover')
-    ? Promise.all([ prepareImage(pages[2]), prepareImage(pages[3]) ])
-    : Promise.all([ prepareImage(pages[curL+2]), prepareImage(pages[curL+3]) ]);
-
-  const nextV = previewStaticsFor('forward');
-
-  // Para cubrir tu ventana completa PE2(+90→−45) y PE1(+45→−90),
-  // animamos 0→−180 (θ: 0→−90). La parte +90→0 no existe en click,
-  // pero PE2 aún se ve (a 0° tiene ~0.333) y se apaga hasta −45° (0).
-  animateTurn('forward', 0, -180, FLIP_MS, gate, ()=>{ view = nextV; render(); });
+/* Flechas laterales minimalistas (fuera del libro, alineadas) */
+.edge-hint{
+  position:fixed; bottom:68px; z-index:11;
+  width:32px; height:32px; display:grid; place-items:center;
+  font-size:24px; line-height:1; color:#111;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.25));
+  opacity:.9;
 }
-function goPrev(){
-  if (!canPrev() || isAnimating) return;
-
-  const curL = indicesFromView(view).left ?? 2;
-  const gate = (view.mode==='spread' && view.pairLeft<=2)
-    ? Promise.all([ prepareImage(pages[1]) ])
-    : Promise.all([ prepareImage(pages[curL-2]), prepareImage(pages[curL-1]) ]);
-
-  const prevV = previewStaticsFor('backward');
-  animateTurn('backward', 0, 180, FLIP_MS, gate, ()=>{ view = prevV; render(); });
-}
-
-function goFirst(){
-  if (isAnimating) return;
-  if (START_MODE==='cover'){ view={mode:'cover'}; }
-  else { view={mode:'spread', pairLeft: (INITIAL_SPREAD==='1-2')?1:2}; }
-  render();
-}
-function goLast(){
-  if (isAnimating) return;
-  const N = TOTAL(); if (N<=0) return;
-  if (N % 2 === 1){ view={mode:'spread', pairLeft:N}; }
-  else            { view={mode:'spread', pairLeft:N-1}; }
-  render();
-}
-
-/********* Controles *********/
-btnNext.addEventListener('click', goNext);
-btnPrev.addEventListener('click', goPrev);
-btnFirst.addEventListener('click', goFirst);
-btnLast.addEventListener('click', goLast);
-document.addEventListener('keydown', e=>{
-  if(e.key==='ArrowRight') goNext();
-  if(e.key==='ArrowLeft')  goPrev();
-});
-book.addEventListener('click', (e)=>{
-  if (isAnimating || suppressClick) return;
-  const rect = book.getBoundingClientRect();
-  const centerX = rect.left + rect.width/2;
-  if (e.clientX < centerX) goPrev(); else goNext();
-});
-book.addEventListener('wheel', (e)=>{
-  e.preventDefault();
-  if (isAnimating) return;
-  const now = performance.now();
-  if (now < wheelLockUntil) return;
-  if (e.deltaY > 0){ if (canNext()) goNext(); }
-  else if (e.deltaY < 0){ if (canPrev()) goPrev(); }
-  wheelLockUntil = now + WHEEL_THROTTLE_MS;
-}, { passive:false });
-
-/********* Drag por borde *********/
-let drag = null; // {dir, refs, rect, startX, t, deg, pointerId, preview}
-
-function startDrag(side, e){
-  if (isAnimating) return;
-  if (side==='left' && !canPrev()) return;
-  if (side==='right' && !canNext()) return;
-
-  suppressClick = true;
-
-  const pointerId = e.pointerId;
-  const dir = (side==='right') ? 'forward' : 'backward';
-
-  const targetV = previewStaticsFor(dir);
-  const rect = book.getBoundingClientRect();
-  const startX = e.clientX;
-  e.currentTarget.setPointerCapture && e.currentTarget.setPointerCapture(pointerId);
-
-  const refs = makeTurnOverlay(dir);
-  setTurnDeg(refs, dir, dir==='forward' ? -8 : 8);
-
-  drag = { dir, refs, rect, startX, t:0, deg:0, pointerId, preview:targetV };
-}
-function moveDrag(e){
-  if (!drag) return;
-  const x = e.clientX;
-  const {rect, dir} = drag;
-  const center = rect.left + rect.width/2;
-
-  let t;
-  if (dir==='forward'){ t = Math.min(1, Math.max(0, (rect.right - x) / (rect.right - center))); }
-  else               { t = Math.min(1, Math.max(0, (x - rect.left) / (center - rect.left))); }
-  drag.t = t;
-
-  const deg = (dir==='forward') ? -180*t : 180*t;
-  drag.deg = deg;
-  setTurnDeg(drag.refs, dir, deg);
-}
-function endDrag(e){
-  if (!drag) return;
-  const {dir, t, refs, deg, pointerId, preview} = drag;
-  drag = null;
-
-  try{ e.currentTarget.releasePointerCapture && e.currentTarget.releasePointerCapture(pointerId); }catch{}
-
-  if (t>DRAG_COMPLETE_T){
-    const curL = indicesFromView(view).left ?? (dir==='forward'?1:2);
-    const gate = (dir==='forward')
-      ? Promise.all([ prepareImage(pages[curL+2]), prepareImage(pages[curL+3]) ])
-      : (view.mode==='spread' && view.pairLeft<=2
-          ? Promise.all([ prepareImage(pages[1]) ])
-          : Promise.all([ prepareImage(pages[curL-2]), prepareImage(pages[curL-1]) ]));
-
-    const ms = FLIP_MS_DRAG_DONE, from = deg, to = (dir==='forward') ? -180 : 180;
-    isAnimating = true;
-    const t0 = performance.now();
-    function frame(now){
-      const k = Math.min(1,(now-t0)/ms);
-      const d = from + (to-from)*easeInOut(k);
-      setTurnDeg(refs, dir, d);
-      if (k<1) requestAnimationFrame(frame);
-      else {
-        Promise.resolve(gate).then(()=>{
-          refs.turn.remove(); clearDestShadows();
-          setStaticShadow('left',  0);
-          setStaticShadow('right', 0);
-          isAnimating=false; view = preview; render();
-        });
-      }
-    }
-    requestAnimationFrame(frame);
-  } else {
-    const ms = FLIP_MS_RETURN, from = deg, to = 0;
-    isAnimating = true;
-    const t0 = performance.now();
-    function frame(now){
-      const k = Math.min(1,(now-t0)/ms);
-      const d = from + (to-from)*easeInOut(k);
-      setTurnDeg(refs, dir, d);
-      if (k<1) requestAnimationFrame(frame);
-      else {
-        refs.turn.remove(); clearDestShadows();
-        setStaticShadow('left',  0);
-        setStaticShadow('right', 0);
-        isAnimating=false; render();
-      }
-    }
-    requestAnimationFrame(frame);
-  }
-
-  setTimeout(()=>{ suppressClick=false; }, 80);
-}
-for (const el of [dragLeft, dragRight]){
-  el.addEventListener('pointerdown', e=>{
-    const side = (e.currentTarget===dragRight) ? 'right' : 'left';
-    startDrag(side, e);
-  });
-  el.addEventListener('pointermove', moveDrag);
-  el.addEventListener('pointerup',   endDrag);
-  el.addEventListener('pointercancel', endDrag);
-}
-
-/********* Fullscreen *********/
-btnFS.addEventListener('click', ()=>{
-  const entering = btnFS.dataset.state!=='exit';
-  const t = viewer;
-  if (entering){ (t.requestFullscreen||document.documentElement.requestFullscreen).call(t); }
-  else { document.exitFullscreen && document.exitFullscreen(); }
-});
-document.addEventListener('fullscreenchange', ()=>{
-  const fs = !!document.fullscreenElement;
-  btnFS.dataset.state = fs ? 'exit':'enter';
-  btnFS.textContent   = fs ? '⤡'  : '⤢';
-});
-
-/********* Slider *********/
-slider.addEventListener('input', ()=>{
-  const N = TOTAL();
-  const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2));
-  let target = Math.min(spreads, Math.max(0, parseInt(slider.value,10)));
-  if (target===0){
-    if (START_MODE==='cover') view={mode:'cover'};
-    else view={mode:'spread', pairLeft:(INITIAL_SPREAD==='1-2')?1:2};
-  } else {
-    view={mode:'spread', pairLeft: 2 + (target-1)*2};
-    const maxLeft = (N % 2 === 0) ? N-1 : N;
-    if (view.pairLeft>maxLeft) view.pairLeft=maxLeft;
-  }
-  render();
-});
-
-/********* Init *********/
-(async function init(){
-  const map=[]; let firstImg=null, found=false, misses=0;
-  for(let n=1;n<=MAX_PAGES;n++){
-    const r = await findOne(n);
-    if(r){ map[n]=r.url; misses=0; if(!firstImg){ firstImg=r.i; } found=true; }
-    else if(found){ map[n]=null; if(++misses>=6) break; }
-  }
-  let last=0; for(let i=map.length-1;i>=1;i--) if(map[i]){ last=i; break; }
-  pages = Array.from({length:last+1},(_,i)=>map[i]||null);
-
-  if (firstImg){ setPageARFrom(firstImg); }
-
-  if (START_MODE==='cover'){ view={mode:'cover'}; }
-  else { view={mode:'spread', pairLeft: (INITIAL_SPREAD==='1-2') ? 1 : 2}; }
-
-  const seedIdx = [1,2,3,4,5].filter(i => i<=TOTAL());
-  await Promise.all(seedIdx.map(i=>prepareImage(pages[i])));
-
-  hintL.addEventListener('click', ()=>{ if (canPrev()) goPrev(); });
-  hintR.addEventListener('click', ()=>{ if (canNext()) goNext(); });
-
-  render();
-})();
+.edge-hint.left  { left:  calc(50vw - min(96vw, 1280px)/2 - 28px); }
+.edge-hint.right { right: calc(50vw - min(96vw, 1280px)/2 - 28px); }
+.edge-hint:disabled{ opacity:.25; cursor:not-allowed }
+.edge-hint:hover{ transform:translateY(-1px) }
