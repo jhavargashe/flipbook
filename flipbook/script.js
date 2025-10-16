@@ -235,7 +235,7 @@ function makeTurnOverlay(direction){
   // Cresta de pliegue
   const ridge = document.createElement('div'); ridge.className='foldRidge';
 
-  // Caras según estado actual
+  // Caras según estado actual (no cambiamos qué es izquierda/derecha)
   const cur   = indicesFromView(view);
   const nextV = nextViewFrom(view);
   const prevV = prevViewFrom(view);
@@ -264,7 +264,7 @@ function makeTurnOverlay(direction){
   return {turn, ridge, fL, fR, bL, bR, destShadow, destSide};
 }
 
-/* Ángulo → sombras + giro */
+/* Ángulo → sombras + giro (solo invertimos la FASE temporal) */
 function setTurnDeg(refs, direction, deg){
   const { turn, ridge, destShadow } = refs;
 
@@ -285,13 +285,15 @@ function setTurnDeg(refs, direction, deg){
     destShadow.style.opacity = (max * Math.pow(k, 1.0)).toFixed(3);
   }
 
-  /* Sombras estáticas animadas por fase */
-  const progA = (x <= 90) ? (1 - x/90) : 0;         // Fase A: 90→0 (0→1)
-  const progB = (x >= 90) ? ((x - 90)/90) : 0;      // Fase B: 0→90 (0→1)
+  /* Sombras estáticas animadas por FASE (A/B) — solo corregimos el sentido temporal */
+  // Fase A: 90°→0°  => progA sube 0→1
+  // Fase B: 0°→90°  => progB sube 0→1
+  const progA = (x <= 90) ? (1 - x/90) : 0;         // A: 0..1
+  const progB = (x >= 90) ? ((x - 90)/90) : 0;      // B: 0..1
   const staticMax = parseFloat(getComputedStyle(document.documentElement)
     .getPropertyValue('--static-shadow-max')) || 0.55;
 
-  // 🔁 Mapeo corregido:
+  // ✅ Sin cambiar qué lado es quién; SOLO corregimos cuándo aparece:
   // Adelante (R→L): Fase A → derecha, Fase B → izquierda
   // Atrás    (L→R): Fase A → izquierda, Fase B → derecha
   if (direction === 'forward'){
