@@ -1,46 +1,46 @@
 name: Convert PDFs to images
 
 on:
-  workflow_dispatch:
   push:
-    branches: ["**"]
     paths:
-      - "pdfs/**"
-      - ".github/workflows/convert-pdfs.yml"
+      - "books/**.pdf"
       - ".github/scripts/convert_pdfs.sh"
-
-permissions:
-  contents: write   # <- permite commit/push desde el workflow
+      - ".github/workflows/convert-pdfs.yml"
+  workflow_dispatch: {}
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Enable Actions if in a fork (no-op)
-        run: echo "Start"
-
-      - name: Install converters (poppler + imagemagick)
+      - name: Install poppler (pdftoppm) and ImageMagick
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils imagemagick
+          # Permitir que ImageMagick procese si hiciera falta (no dependemos de PDF en IM)
+          sudo sed -i 's/<policy domain="coder" rights="none" pattern="PDF" \/>/<policy domain="coder" rights="read|write" pattern="PDF" \/>/' /etc/ImageMagick-6/policy.xml || true
 
-      - name: Convert PDFs to images
-        run: bash .github/scripts/convert_pdfs.sh
+      - name: Convert PDFs to JPGs
+        shell: bash
+        env:
+          DPI: "300"
+          QUALITY: "95"
+        run: |
+          bash .github/scripts/convert_pdfs.sh
+          # Mostrar un resumen
+          ls -la assets/books || true
 
       - name: Commit changes (if any)
+        shell: bash
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "chore: convert PDFs to images [skip ci]"
+            git commit -m "chore: auto-generate page images from PDFs"
             git push
           else
-            echo "No image changes to commit."
+            echo "No hay cambios que commitear."
           fi
