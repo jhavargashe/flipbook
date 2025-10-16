@@ -1,70 +1,52 @@
 #!/usr/bin/env bash
-# Convertir todos los PDFs en /books/<slug> a JPGs en /assets/books/<slug>/pages
+set -euo pipefail
 
-# Hacemos el script robusto y compatible (sin exigir 'pipefail')
-set -e
-set -u
-set -o pipefail 2>/dev/null || true
+# Si el script se copió con CRLF alguna vez, normalízate a ti mismo silenciosamente
+if command -v dos2unix >/dev/null 2>&1; then
+  dos2unix "$0" >/dev/null 2>&1 || true
+fi
 
-DPI="${DPI:-300}"             # resolución de salida (puedes 150/200/300/600)
-QUALITY="${QUALITY:-95}"      # calidad JPG (0–100)
-
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-BOOKS_DIR="${ROOT}/books"
-OUT_ROOT="${ROOT}/assets/books"
-
-# Requiere poppler-utils (pdftoppm)
-command -v pdftoppm >/dev/null 2>&1 || {
-  echo "ERROR: 'pdftoppm' no está instalado."; exit 1;
-}
+if ! command -v pdftoppm >/dev/null 2>&1; then
+  echo "ERROR: 'pdftoppm' no está instalado." >&2
+  exit 1
+fi
 
 shopt -s nullglob
 
-# Recorre libros: /books/<slug>/*.pdf
-for bookdir in "${BOOKS_DIR}"/*; do
-  [ -d "$bookdir" ] || continue
-  slug="$(basename "$bookdir")"
+ROOT="$(pwd)"
+BOOKS_DIR="${ROOT}/books"
 
-  # PDFs dentro del libro
-  pdfs=("$bookdir"/*.pdf)
-  [ ${#pdfs[@]} -gt 0 ] || continue
+# Busca libros: books/<slug>/*.pdf
+found_any=false
+for pdf in "${BOOKS_DIR}"/*/*.pdf; do
+  found_any=true
 
-  outdir="${OUT_ROOT}/${slug}/pages"
-  mkdir -p "$outdir"
+  book_dir="$(dirname "$pdf")"                     # books/mi-libro
+  slug="$(basename "$book_dir")"                   # mi-libro
+  out_dir="${ROOT}/assets/books/${slug}/pages"     # assets/books/mi-libro/pages
 
-  echo "==> Libro: ${slug}"
-  # Limpiamos antiguos page-*.jpg (si existían)
-  rm -f "${outdir}"/page-*.jpg
+  mkdir -p "${out_dir}"
 
-  # Si hay varios PDFs en el mismo libro, los concatenamos uno tras otro
-  page_offset=0
-  for pdf in "${pdfs[@]}"; do
-    echo "   -> PDF: $(basename "$pdf")  (DPI=${DPI}, quality=${QUALITY})"
-    # Salida temporal con prefijo dentro del propio outdir, para no mover archivos
-    # pdftoppm genera page-1.jpg, page-2.jpg, ...
-    pdftoppm -jpeg -r "${DPI}" "$pdf" "${outdir}/page"
+  echo "==> Procesando: ${pdf}"
+  echo "    Salida en:  ${out_dir}"
 
-    # Re-numera si ya había páginas anteriores (evita sobreescribir si hay >1 PDF)
-    if [ $page_offset -gt 0 ]; then
-      for f in "${outdir}"/page-*.jpg; do
-        # extrae número
-        base="$(basename "$f")"              # page-12.jpg
-        num="${base#page-}"                  # 12.jpg
-        num="${num%.jpg}"                    # 12
-        newnum=$((num + page_offset))
-        mv -f "$f" "${outdir}/page-${newnum}.jpg"
-      done
-    fi
+  # Limpia JPGs previos (si quieres conservarlos, comenta esta línea)
+  rm -f "${out_dir}"/*.jpg
 
-    # actualiza el offset contando cuántas páginas hay ahora
-    count_now=$(ls -1 "${outdir}"/page-*.jpg 2>/dev/null | wc -l | tr -d ' ')
-    page_offset=$count_now
+  # Convierte a JPG a 300 DPI. Cambia -r si quieres otra resolución.
+  # Esto genera page-1.jpg, page-2.jpg, ...
+  pdftoppm -jpeg -r 300 "$pdf" "${out_dir}/page" >/dev/null
+
+  # Renombra a 1.jpg, 2.jpg, ...
+  n=1
+  for f in "${out_dir}"/page-*.jpg; do
+    mv "$f" "${out_dir}/${n}.jpg"
+    n=$((n+1))
   done
 
-  # Ajuste de calidad con mogrify (opcional; salta si no está ImageMagick)
-  if command -v mogrify >/dev/null 2>&1; then
-    mogrify -quality "${QUALITY}" "${outdir}"/page-*.jpg || true
-  fi
-
-  echo "   => Completado: ${slug} (${page_offset} páginas)"
+  echo "    OK (${n-1} páginas)"
 done
+
+if [ "${found_any}" = false ]; then
+  echo "No se encontraron PDFs en 'books/<slug>/*.pdf'." >&2
+fi
