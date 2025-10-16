@@ -1,5 +1,6 @@
 :root{
-  --page-ar: 2/3;                            /* ancho/alto de UNA página (JS lo fija) */
+  /* El JS fijará --page-ar a partir de la primera imagen */
+  --page-ar: 2/3;                            /* ancho/alto de UNA página */
   --book-ar: calc(2 * var(--page-ar));       /* spread = dos páginas lado a lado */
 
   --radius: 16px;
@@ -10,16 +11,23 @@
   --tc-shadow: 0 6px 20px rgba(0,0,0,.12);
   --icon-bg:#fff; --icon-fg:#222; --icon-bd:#d9d9d9;
 
+  /* Barra más delgada y separada (no se solapa con la hoja) */
   --bar-h: 10px;
   --bar-gap: calc(var(--bar-h) * 3 + 14px);
 
   --rail:#cbcbcb; --fill:#6f6f6f;
 
+  /* spinner */
   --spin-base: rgba(0,0,0,.14);
   --spin-fg:   #6f6f6f;
   --spin-bg:   rgba(255,255,255,.75);
 
-  --turn-outset: 16px; /* margen extra del overlay */
+  /* margen del overlay de la hoja (evita cortes), recortado por clip-path */
+  --turn-outset: 16px;
+
+  /* topes de sombra */
+  --dest-shadow-max: .50;   /* sombra proyectada sobre página destino (overlay) */
+  --static-shadow-max: .55; /* sombras animadas en páginas estáticas */
 }
 
 *{box-sizing:border-box}
@@ -45,12 +53,12 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 .stack{display:flex;flex-direction:column;align-items:center;gap:var(--bar-gap);width:100%}
 
-/* Libro: AR de spread SIEMPRE; en portada ocultamos la izquierda.
-   Recortamos TODO (incl. overlay) al borde del libro. */
+/* Libro: AR de spread SIEMPRE; en portada ocultamos la izquierda
+   Recortamos al borde del libro para que ninguna sombra “sangre” */
 .book{
   position:relative;width:min(96vw,1280px);aspect-ratio:var(--book-ar);
   background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
-  overflow:visible; 
+  overflow:visible; /* dejamos crecer overlay, pero recortamos con clip-path */
   clip-path: inset(0 round var(--radius));
 }
 .book.single .page.left{ display:none; }
@@ -58,25 +66,8 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .gutter{
   position:absolute;inset:0;z-index:1;pointer-events:none;
   background:
-    linear-gradient(90deg, rgba(0,0,0,.05), transparent 12%, transparent 88%, rgba(0,0,0,.05));
-  opacity:.35;
-}
-
-/* Sombras proyectadas (no rotan) */
-.cast{
-  position:absolute; top:0; bottom:0; width:50%; pointer-events:none; opacity:0;
-  z-index:2; /* por encima de la página, por debajo de la hoja que gira */
-  transition: opacity .08s linear;
-}
-.cast.left  { left:0;
-  background:
-    radial-gradient(120% 100% at 100% 50%, rgba(0,0,0,.35), rgba(0,0,0,0) 65%),
-    linear-gradient(90deg, rgba(0,0,0,.18), rgba(0,0,0,0) 45%);
-}
-.cast.right { right:0;
-  background:
-    radial-gradient(120% 100% at   0% 50%, rgba(0,0,0,.35), rgba(0,0,0,0) 65%),
-    linear-gradient(270deg, rgba(0,0,0,.18), rgba(0,0,0,0) 45%);
+    linear-gradient(90deg, rgba(0,0,0,.06), transparent 12%, transparent 88%, rgba(0,0,0,.06));
+  opacity:.33
 }
 
 /* Mitades estáticas */
@@ -84,6 +75,7 @@ button{border:0;background:none;padding:0;cursor:pointer}
   position:absolute; top:0; bottom:0; width:50%; height:100%;
   z-index:2; transform-style:preserve-3d;
 }
+.page.turning{ z-index:7 }
 .page.left  { left:0;  transform-origin:right center }
 .page.right { right:0; transform-origin:left  center }
 
@@ -94,7 +86,20 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .sheet .edge{ position:absolute; top:0; bottom:0; width:3px; right:0; background:linear-gradient(180deg,#ddd,#aaa,#ddd); transform:translateZ(0.5px) }
 .page.left .sheet .edge{ left:0; right:auto }
 
-/* Zonas de arrastre */
+/* Sombras estáticas (animadas por JS) — orientadas hacia el centro */
+.shadow-static{
+  position:absolute; inset:0; pointer-events:none; opacity:0; z-index:3;
+}
+.shadow-static.left{
+  /* izquierda: oscura en el borde derecho (hacia el centro) */
+  background: linear-gradient(270deg, rgba(0,0,0,var(--static-shadow-max)) 2%, rgba(0,0,0,0) 62%);
+}
+.shadow-static.right{
+  /* derecha: oscura en el borde izquierdo (hacia el centro) */
+  background: linear-gradient(90deg, rgba(0,0,0,var(--static-shadow-max)) 2%, rgba(0,0,0,0) 62%);
+}
+
+/* Zonas de arrastre (verticales, estrechas ~9%) */
 .drag-zone{
   position:absolute; top:0; height:100%; width:9%;
   z-index:8; opacity:0; cursor:ew-resize; touch-action:none;
@@ -114,10 +119,24 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .spinner.hidden{ opacity:0; transform:translate(-50%,-50%) scale(.9); pointer-events:none }
 @keyframes spin { to { transform:translate(-50%,-50%) rotate(360deg) } }
 
-/* Barra inferior */
-.bar{width:100%;display:flex;justify-content:center;}
-.bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:8px 12px 10px}
-.rail{ position:relative;width:min(96vw,1280px);height:var(--bar-h);border-radius:999px;background:var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08) }
+/* Banda inferior: flecha — barra — flecha, alineado con el libro */
+.bottom-band{
+  width:min(96vw,1280px);
+  display:flex; align-items:center; gap:16px; justify-content:space-between;
+}
+.edge-hint{
+  font-size: 28px; line-height:1;
+  color:#222; text-shadow: 0 2px 6px rgba(0,0,0,.35);
+  padding: 6px 6px;
+  border-radius: 6px;
+  transition: transform .12s ease;
+}
+.edge-hint:hover{ transform: translateY(-1px) }
+
+/* Barra inferior (flex: ocupa el centro y no se solapa) */
+.bar{ flex:1; display:flex; justify-content:center; }
+.bar-box{background:var(--tc-bg);border-radius:12px;box-shadow:var(--tc-shadow);padding:8px 12px 10px; width:100%}
+.rail{ position:relative;width:100%;height:var(--bar-h);border-radius:999px;background:var(--rail);box-shadow:inset 0 2px 5px rgba(0,0,0,.08) }
 .fill{ position:absolute;left:2px;top:2px;bottom:2px;width:0%;background:var(--fill);border-radius:999px;transition:width .12s linear }
 .slider{ position:absolute;inset:0;width:100%;height:100%;appearance:none;background:transparent;outline:none;cursor:pointer }
 .slider::-webkit-slider-thumb{appearance:none;width:0;height:0}
@@ -134,11 +153,12 @@ button{border:0;background:none;padding:0;cursor:pointer}
 
 /* ============ HOJA OVERLAY (giro único) ============ */
 .turn{
+  /* ampliamos un poco el canvas; el clip-path del libro recorta al borde */
   position:absolute; inset:calc(-1 * var(--turn-outset)); z-index:9; pointer-events:none;
   transform-style:preserve-3d;
 }
 .turn .face{
-  position:absolute; inset:var(--turn-outset);
+  position:absolute; inset:var(--turn-outset); /* compensa el inset del .turn */
   backface-visibility:hidden;
   display:grid; grid-template-columns:1fr 1fr;
 }
@@ -147,34 +167,28 @@ button{border:0;background:none;padding:0;cursor:pointer}
 .turn .half.left{ grid-column:1 }
 .turn .half.right{ grid-column:2 }
 
-/* Sombra del pliegue (pegada a la hoja) */
-.turn .foldShadow{
-  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); width:52%;
-  left:calc(50% + var(--turn-outset));
+/* Cresta de pliegue sutil */
+.turn .foldRidge{
+  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); width:50%;
+  left:calc(50% + var(--turn-outset)); /* R→L por defecto */
+  pointer-events:none; opacity:0;
   background:
-    radial-gradient(70% 150% at 50% 50%, rgba(0,0,0,.28), rgba(0,0,0,0) 62%),
-    linear-gradient(90deg, rgba(0,0,0,.35), rgba(0,0,0,0) 40%);
-  opacity:0; pointer-events:none;
+    linear-gradient(90deg,
+      rgba(0,0,0,.35) 0%,
+      rgba(0,0,0,.18) 14%,
+      rgba(0,0,0,0) 55%
+    );
+  filter: blur(0.3px);
 }
-.turn.backward .foldShadow{ left:var(--turn-outset); transform:scaleX(-1); }
+.turn.backward .foldRidge{ left:var(--turn-outset); transform:scaleX(-1); }
 
-/* Highlight fino junto al pliegue */
-.turn .foldHighlight{
-  position:absolute; top:var(--turn-outset); bottom:var(--turn-outset); width:3%;
-  left:calc(50% + var(--turn-outset));
-  background: linear-gradient(90deg, rgba(255,255,255,.55), rgba(255,255,255,0));
-  opacity:0; pointer-events:none; mix-blend-mode:screen;
+/* Sombra proyectada sobre la página destino (overlay auxiliar) */
+.shadow-dest{
+  position:absolute; inset:0; pointer-events:none; opacity:0;
 }
-.turn.backward .foldHighlight{ left:auto; right:var(--turn-outset); transform:scaleX(-1); }
-
-/* Flechas laterales (alineadas con el libro), misma línea Y que la barra */
-.edge-hint{
-  position:fixed; z-index:11;
-  bottom: calc(var(--bar-gap) - var(--bar-h) - 2px);
-  font-size: 28px; line-height:1;
-  color:#222; text-shadow: 0 2px 6px rgba(0,0,0,.35);
-  padding: 2px 4px;
+.shadow-dest.left{
+  background: linear-gradient(270deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,0) 62%);
 }
-.edge-hint.left  { left:  calc(50vw - min(96vw, 1280px)/2 - 18px); }
-.edge-hint.right { right: calc(50vw - min(96vw, 1280px)/2 - 18px); }
-.edge-hint:hover { transform:translateY(-1px) }
+.shadow-dest.right{
+  background: linear-gradient(90deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,0) 62%);
+}

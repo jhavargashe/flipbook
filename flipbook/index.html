@@ -26,12 +26,8 @@
         data-initial-spread="2-3"
         aria-label="Flipbook">
 
-        <!-- Viñeta general muy sutil (puedes ocultarla con .gutter{display:none}) -->
+        <!-- Viñeta sutil (puedes ocultarla con .gutter{display:none}) -->
         <span class="gutter"></span>
-
-        <!-- Sombras PROYECTADAS sobre páginas estáticas (no rotan) -->
-        <div id="cast-left"  class="cast left"  aria-hidden="true"></div>
-        <div id="cast-right" class="cast right" aria-hidden="true"></div>
 
         <!-- Página izquierda (estática) -->
         <div id="page-left" class="page left">
@@ -40,6 +36,8 @@
             <div class="edge"></div>
             <div class="back"></div>
           </div>
+          <!-- Sombras estáticas animables -->
+          <div class="shadow-static left"  aria-hidden="true"></div>
           <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
 
@@ -50,6 +48,8 @@
             <div class="edge"></div>
             <div class="back"></div>
           </div>
+          <!-- Sombras estáticas animables -->
+          <div class="shadow-static right" aria-hidden="true"></div>
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
@@ -58,20 +58,22 @@
         <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
       </section>
 
-      <!-- Barra inferior (delgada y separada del libro) -->
-      <nav class="bar">
-        <div class="bar-box">
-          <div class="rail">
-            <div class="fill" id="fill"></div>
-            <input id="slider" class="slider" type="range" min="0" value="0" step="1" />
-          </div>
-        </div>
-      </nav>
-    </div>
+      <!-- Banda inferior: flecha izquierda — barra — flecha derecha (alineado al libro) -->
+      <div class="bottom-band">
+        <button id="edge-left"  class="edge-hint" title="Atrás">❮</button>
 
-    <!-- Flechas laterales (alineadas al ancho del libro, sin cápsula) -->
-    <button id="edge-left"  class="edge-hint left"  title="Atrás">❮</button>
-    <button id="edge-right" class="edge-hint right" title="Adelante">❯</button>
+        <nav class="bar">
+          <div class="bar-box">
+            <div class="rail">
+              <div class="fill" id="fill"></div>
+              <input id="slider" class="slider" type="range" min="0" value="0" step="1" />
+            </div>
+          </div>
+        </nav>
+
+        <button id="edge-right" class="edge-hint" title="Adelante">❯</button>
+      </div>
+    </div>
   </div>
 
   <script src="script.js" defer></script>
