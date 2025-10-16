@@ -3,41 +3,41 @@ name: build
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 permissions:
-  contents: write  # necesario para poder hacer commit/push de las imágenes generadas
+  contents: write
 
 jobs:
-  build:
+  convert:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install converters (poppler + imagemagick)
+      - name: Instalar poppler (pdftoppm) e ImageMagick
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils imagemagick
-          # Habilitar lectura de PDFs en ImageMagick (algunos runners lo bloquean)
-          if [ -f /etc/ImageMagick-6/policy.xml ]; then
-            sudo sed -i 's/pattern="PDF" rights="none"/pattern="PDF" rights="read|write"/' /etc/ImageMagick-6/policy.xml || true
-            sudo sed -i 's/domain="coder" rights="none" pattern="PS"/domain="coder" rights="read|write" pattern="PS"/' /etc/ImageMagick-6/policy.xml || true
-          fi
+          sudo apt-get install -y poppler-utils imagemagick dos2unix
 
-      - name: Convert PDFs to images
-        shell: bash
-        run: .github/scripts/convert_pdfs.sh
-
-      - name: Commit changes (if any)
+      - name: Normalizar saltos de línea (LF) en scripts
         run: |
-          if [[ -n "$(git status --porcelain)" ]]; then
-            git config user.name  "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          dos2unix .github/scripts/*.sh || true
+          git status --porcelain
+
+      - name: Convertir PDFs a JPGs
+        shell: bash
+        run: bash .github/scripts/convert_pdfs.sh
+
+      - name: Hacer commit de imágenes generadas (si hay cambios)
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
             git add -A
-            git commit -m "chore: generate/update book images"
+            git commit -m "build: convertir PDFs a imágenes"
             git push
           else
-            echo "No changes to commit"
+            echo "Sin cambios que commitear."
           fi
