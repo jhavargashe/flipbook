@@ -1,52 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Si el script se copió con CRLF alguna vez, normalízate a ti mismo silenciosamente
-if command -v dos2unix >/dev/null 2>&1; then
-  dos2unix "$0" >/dev/null 2>&1 || true
-fi
+ROOT="$(pwd)"
 
-if ! command -v pdftoppm >/dev/null 2>&1; then
-  echo "ERROR: 'pdftoppm' no está instalado." >&2
-  exit 1
-fi
+# Carpeta de libros con PDFs (books/<slug>/*.pdf)
+BOOKS_DIR="${ROOT}/books"
+# Salida de imágenes (assets/books/<slug>/pages/)
+OUT_ROOT="${ROOT}/assets/books"
 
 shopt -s nullglob
 
-ROOT="$(pwd)"
-BOOKS_DIR="${ROOT}/books"
-
-# Busca libros: books/<slug>/*.pdf
 found_any=false
-for pdf in "${BOOKS_DIR}"/*/*.pdf; do
+
+for pdf in "${BOOKS_DIR}"/**/*.pdf; do
   found_any=true
 
-  book_dir="$(dirname "$pdf")"                     # books/mi-libro
-  slug="$(basename "$book_dir")"                   # mi-libro
-  out_dir="${ROOT}/assets/books/${slug}/pages"     # assets/books/mi-libro/pages
+  # slug = subcarpeta (mi-libro, proyecto-x, etc.)
+  slug="$(basename "$(dirname "$pdf")")"
 
-  mkdir -p "${out_dir}"
+  out_dir="${OUT_ROOT}/${slug}/pages"
+  mkdir -p "$out_dir"
 
-  echo "==> Procesando: ${pdf}"
-  echo "    Salida en:  ${out_dir}"
+  # Nombre base sin extensión
+  base="$(basename "$pdf" .pdf)"
 
-  # Limpia JPGs previos (si quieres conservarlos, comenta esta línea)
-  rm -f "${out_dir}"/*.jpg
+  echo "Convirtiendo: $pdf -> $out_dir"
 
-  # Convierte a JPG a 300 DPI. Cambia -r si quieres otra resolución.
-  # Esto genera page-1.jpg, page-2.jpg, ...
-  pdftoppm -jpeg -r 300 "$pdf" "${out_dir}/page" >/dev/null
+  # Con pdftoppm (rápido y nítido). 300 dpi a JPG.
+  # Salida: page-1.jpg, page-2.jpg, ...
+  pdftoppm -jpeg -r 300 "$pdf" "${out_dir}/page"
 
-  # Renombra a 1.jpg, 2.jpg, ...
-  n=1
-  for f in "${out_dir}"/page-*.jpg; do
-    mv "$f" "${out_dir}/${n}.jpg"
-    n=$((n+1))
+  # Asegurar extensión .jpg (pdftoppm produce page-1.jpg ya)
+  # Normalizar calidad si quieres:
+  for img in "${out_dir}"/page-*.jpg; do
+    mogrify -strip -quality 92 "$img"
   done
 
-  echo "    OK (${n-1} páginas)"
 done
 
-if [ "${found_any}" = false ]; then
-  echo "No se encontraron PDFs en 'books/<slug>/*.pdf'." >&2
+if ! $found_any; then
+  echo "No se encontraron PDFs en ${BOOKS_DIR}"
 fi
+
+echo "Conversión terminada."
