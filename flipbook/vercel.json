@@ -1,9 +1,18 @@
 {
   "version": 2,
+  "name": "flipbook-viewer",
+  "builds": [
+    { "src": "index.html", "use": "@vercel/static" }
+  ],
   "routes": [
-    { "handle": "filesystem" },
-    { "src": "/.*", "dest": "/index.html" }
+    { "src": "/(.*)", "dest": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/books/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
   ]
 }
-
-
