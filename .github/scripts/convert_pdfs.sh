@@ -2,44 +2,40 @@
 set -euo pipefail
 
 ROOT="$(pwd)"
+BOOKS_DIR="${ROOT}/books"            # PDFs: books/<libro>/*.pdf
+OUT_ROOT="${ROOT}/assets/books"      # JPGs: assets/books/<libro>/pages/page-1.jpg...
 
-# Carpeta de libros con PDFs (books/<slug>/*.pdf)
-BOOKS_DIR="${ROOT}/books"
-# Salida de imágenes (assets/books/<slug>/pages/)
-OUT_ROOT="${ROOT}/assets/books"
-
-shopt -s nullglob
+shopt -s globstar nullglob
 
 found_any=false
+
+echo "Buscando PDFs en: ${BOOKS_DIR}"
 
 for pdf in "${BOOKS_DIR}"/**/*.pdf; do
   found_any=true
 
-  # slug = subcarpeta (mi-libro, proyecto-x, etc.)
+  # <libro> es la carpeta contenedora del PDF
   slug="$(basename "$(dirname "$pdf")")"
-
   out_dir="${OUT_ROOT}/${slug}/pages"
   mkdir -p "$out_dir"
 
-  # Nombre base sin extensión
-  base="$(basename "$pdf" .pdf)"
+  echo "Convirtiendo: $pdf"
+  echo "Destino:      $out_dir"
 
-  echo "Convirtiendo: $pdf -> $out_dir"
-
-  # Con pdftoppm (rápido y nítido). 300 dpi a JPG.
-  # Salida: page-1.jpg, page-2.jpg, ...
+  # -r 300 => 300 dpi; -jpeg => salida JPG; prefijo 'page'
+  # Genera page-1.jpg, page-2.jpg, ...
   pdftoppm -jpeg -r 300 "$pdf" "${out_dir}/page"
 
-  # Asegurar extensión .jpg (pdftoppm produce page-1.jpg ya)
-  # Normalizar calidad si quieres:
+  # Normaliza metadatos/calidad (opcional)
   for img in "${out_dir}"/page-*.jpg; do
+    [ -f "$img" ] || continue
     mogrify -strip -quality 92 "$img"
   done
-
 done
 
 if ! $found_any; then
   echo "No se encontraron PDFs en ${BOOKS_DIR}"
+else
+  echo "Conversión terminada."
+  echo "Revisar: assets/books/<libro>/pages/page-1.jpg ..."
 fi
-
-echo "Conversión terminada."
