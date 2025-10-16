@@ -13,7 +13,7 @@ const EXT  = ['jpg','jpeg','png','webp'];
 const PATH = base => `assets/pdf-images/${base}`;
 
 /********* Estado / refs *********/
-let pages = [];                 // 1..N (index 0 vacío)
+let pages = []; // 1..N (index 0 vacío)
 let isAnimating = false;
 let wheelLockUntil = 0;
 let suppressClick = false;
@@ -59,12 +59,10 @@ function setPageARFrom(img){
   pageAR = w/h;
   document.documentElement.style.setProperty('--page-ar', pageAR);
 }
-
 function applyBookARClass(){
   if (view.mode==='cover') book.classList.add('single');
   else                     book.classList.remove('single');
 }
-
 function exists(url){return new Promise(res=>{const i=new Image();i.onload=()=>res({ok:true,i,url});i.onerror=()=>res({ok:false,url});i.src=url})}
 async function findOne(n){
   for (const name of NAME_PATTERNS(n))
@@ -75,11 +73,10 @@ async function findOne(n){
   return null;
 }
 
-/* Precarga avanzada (ObjectURL + decode + LRU) */
+/* Precarga avanzada */
 const preparedURL = new Map();
 const preparedLRU = [];
 const PREP_LIMIT = 40;
-
 async function prepareImage(url){
   if (!url || preparedURL.has(url)) return;
   try{
@@ -100,7 +97,7 @@ async function prepareImage(url){
 }
 const getPreparedURL = url => preparedURL.get(url) || url;
 
-/********* Mapeo de vista *********/
+/********* Mapeo vista -> índices *********/
 function indicesFromView(v){
   if (v.mode==='cover') return { left:null, right:1 };
   const L=v.pairLeft, R=L+1, N=TOTAL();
@@ -139,7 +136,6 @@ function applySrc(img, url, spinner){
   img.src = finalURL;
   if (img.complete && img.naturalWidth>0){ spinner.classList.add('hidden'); img.style.opacity=1; }
 }
-
 function paintStatic(leftIndex, rightIndex){
   if (leftIndex){
     pageLeft.style.display = '';
@@ -154,11 +150,9 @@ function paintStatic(leftIndex, rightIndex){
     applySrc(imgR, null, spinR);
   }
 }
-
 function updateUI(){
   const N = TOTAL();
   const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2));
-
   if (view.mode==='cover'){ slider.value = 0; fill.style.width = '0%'; }
   else {
     const step = Math.max(1, Math.floor((view.pairLeft-2)/2)+1);
@@ -170,17 +164,14 @@ function updateUI(){
 
   const atCover = (view.mode==='cover');
   const atEnd   = (view.mode==='spread') && !canNext();
-
   btnPrev.disabled  = atCover;
   btnFirst.disabled = atCover;
   btnNext.disabled  = atEnd;
   btnLast.disabled  = atEnd;
   hintL.disabled    = atCover;
   hintR.disabled    = atEnd;
-
   dragLeft.style.pointerEvents = atCover ? 'none' : 'auto';
 }
-
 function render(){
   applyBookARClass();
   const {left,right} = indicesFromView(view);
@@ -191,7 +182,7 @@ function render(){
   updateUI();
 }
 
-/********* Sombras *********/
+/********* Sombras auxiliares *********/
 function ensureDestShadow(side){
   const host = (side==='left') ? pageLeft : pageRight;
   if (!host) return null;
@@ -209,7 +200,6 @@ function clearDestShadows(){
   if (a) a.remove();
   if (b) b.remove();
 }
-
 const staticLeft  = document.querySelector('#page-left  .shadow-static.left');
 const staticRight = document.querySelector('#page-right .shadow-static.right');
 function setStaticShadow(side, opacity){
@@ -217,11 +207,14 @@ function setStaticShadow(side, opacity){
   if (side==='right' && staticRight) staticRight.style.opacity = String(opacity);
 }
 
-/********* Overlay y animación *********/
+/********* Overlay (hoja) *********/
 function makeTurnOverlay(direction){
   const turn = document.createElement('div');
   turn.className = 'turn';
   if (direction==='backward') turn.classList.add('backward');
+
+  // 👇 bisagra realista según dirección
+  turn.style.transformOrigin = (direction==='forward') ? 'right center' : 'left center';
 
   const front = document.createElement('div'); front.className='face front';
   const back  = document.createElement('div'); back.className='face back';
@@ -232,10 +225,8 @@ function makeTurnOverlay(direction){
   const bR = document.createElement('img'); bR.className='half right';
   front.append(fL,fR); back.append(bL,bR);
 
-  // Cresta de pliegue
   const ridge = document.createElement('div'); ridge.className='foldRidge';
 
-  // Caras según estado actual (no cambiamos qué es izquierda/derecha)
   const cur   = indicesFromView(view);
   const nextV = nextViewFrom(view);
   const prevV = prevViewFrom(view);
@@ -257,52 +248,66 @@ function makeTurnOverlay(direction){
   turn.append(front, back, ridge);
   book.appendChild(turn);
 
-  // Sombra destino (sobre página estática que recibe la hoja)
   const destSide = (direction==='forward') ? 'left' : 'right';
   const destShadow = ensureDestShadow(destSide);
 
-  return {turn, ridge, fL, fR, bL, bR, destShadow, destSide};
+  return {turn, ridge, destShadow};
 }
 
-/* Ángulo → sombras + giro (solo invertimos la FASE temporal) */
+/********* Ángulo firmado y sombras estáticas según tu regla *********/
+function thetaFromDeg(deg){ return deg/2; } // deg ±180 → θ ±90
+
+// PE1 (izquierda): ventana +45° → −90°, de 0 → 1
+function opPE1_forward(theta){
+  if (theta >  45) return 0;
+  if (theta <= -90) return 1;
+  // map +45 -> 0,  -90 -> 1
+  return (45 - theta) / 135;
+}
+// PE2 (derecha): ventana +90° → −45°, de 1 → 0
+function opPE2_forward(theta){
+  if (theta >=  90) return 1;
+  if (theta <= -45) return 0;
+  // map +90 -> 1,  -45 -> 0
+  return (theta + 45) / 135;
+}
+
+// Para atrás (L→R) espeljamos: usamos -θ y cruzamos lados
+function opStaticByDirection(direction, theta){
+  if (direction==='forward'){
+    return { left: opPE1_forward(theta), right: opPE2_forward(theta) };
+  } else {
+    const tp = -theta; // espejo
+    return { left: opPE2_forward(tp), right: opPE1_forward(tp) };
+  }
+}
+
+/********* Set giro + todas las sombras *********/
 function setTurnDeg(refs, direction, deg){
   const { turn, ridge, destShadow } = refs;
 
-  // Rotación de la hoja
+  // Giro de la hoja
   turn.style.transform = `rotateY(${deg}deg)`;
 
-  // Progreso relativo al cenit (campana)
-  const x = Math.min(180, Math.abs(deg));     // 0..180
-  const k = Math.sin((x/180) * Math.PI);      // 0..1..0
+  // θ firmado (0 en CN, −90 izq, +90 der)
+  const theta = thetaFromDeg(deg);
+  const absx = Math.min(180, Math.abs(deg));
+  const k = Math.sin((absx/180) * Math.PI); // cresta tipo campana
 
-  /* Cresta (fold ridge) — pico cerca de CN */
-  ridge.style.opacity = (0.50) * Math.pow(k, 1.2);
+  // Cresta (pico cerca de CN)
+  ridge.style.opacity = 0.50 * Math.pow(k, 1.2);
 
-  /* Sombra destino (overlay auxiliar) — más fuerte en CN */
+  // Proyección en página destino (pico en CN)
   if (destShadow){
-    const max = parseFloat(getComputedStyle(document.documentElement)
-      .getPropertyValue('--dest-shadow-max')) || 0.50;
+    const max = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dest-shadow-max')) || 0.65;
     destShadow.style.opacity = (max * Math.pow(k, 1.0)).toFixed(3);
   }
 
-  /* Sombras estáticas animadas por FASE (A/B) — solo corregimos el sentido temporal */
-  // Fase A: 90°→0°  => progA sube 0→1
-  // Fase B: 0°→90°  => progB sube 0→1
-  const progA = (x <= 90) ? (1 - x/90) : 0;         // A: 0..1
-  const progB = (x >= 90) ? ((x - 90)/90) : 0;      // B: 0..1
-  const staticMax = parseFloat(getComputedStyle(document.documentElement)
-    .getPropertyValue('--static-shadow-max')) || 0.55;
-
-  // ✅ Sin cambiar qué lado es quién; SOLO corregimos cuándo aparece:
-  // Adelante (R→L): Fase A → derecha, Fase B → izquierda
-  // Atrás    (L→R): Fase A → izquierda, Fase B → derecha
-  if (direction === 'forward'){
-    setStaticShadow('right', (staticMax * progA).toFixed(3)); // PE2 durante A
-    setStaticShadow('left',  (staticMax * progB).toFixed(3)); // PE1 durante B
-  } else {
-    setStaticShadow('left',  (staticMax * progA).toFixed(3)); // PE1 durante A
-    setStaticShadow('right', (staticMax * progB).toFixed(3)); // PE2 durante B
-  }
+  // Sombras estáticas PE1/PE2 con tus ventanas exactas
+  const staticMax = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--static-shadow-max')) || 0.85;
+  const {left, right} = opStaticByDirection(direction, theta);
+  setStaticShadow('left',  (staticMax * Math.max(0, Math.min(1, left ))).toFixed(3));
+  setStaticShadow('right', (staticMax * Math.max(0, Math.min(1, right))).toFixed(3));
 }
 
 /********* PREVIEW estáticos hacia destino *********/
@@ -311,8 +316,8 @@ function previewStaticsFor(direction){
   if (direction==='forward'){
     const nextV = nextViewFrom(view);
     const nextI = indicesFromView(nextV);
-    book.classList.remove('single'); // abrir si venimos de portada
-    const leftIdx  = cur.left || cur.right;   // portada: nace a partir de la 1
+    book.classList.remove('single');
+    const leftIdx  = cur.left || cur.right;
     const rightIdx = nextI.right;
     paintStatic(leftIdx, rightIdx);
     return nextV;
@@ -342,8 +347,7 @@ function animateTurn(direction, fromDeg, toDeg, ms, gatePromise, onDone){
     if(t<1) requestAnimationFrame(frame);
     else{
       Promise.resolve(gatePromise).then(()=>{
-        refs.turn.remove(); clearDestShadows(); // limpia overlay
-        // limpia sombras estáticas
+        refs.turn.remove(); clearDestShadows();
         setStaticShadow('left',  0);
         setStaticShadow('right', 0);
         isAnimating = false;
@@ -364,6 +368,10 @@ function goNext(){
     : Promise.all([ prepareImage(pages[curL+2]), prepareImage(pages[curL+3]) ]);
 
   const nextV = previewStaticsFor('forward');
+
+  // Para cubrir tu ventana completa PE2(+90→−45) y PE1(+45→−90),
+  // animamos 0→−180 (θ: 0→−90). La parte +90→0 no existe en click,
+  // pero PE2 aún se ve (a 0° tiene ~0.333) y se apaga hasta −45° (0).
   animateTurn('forward', 0, -180, FLIP_MS, gate, ()=>{ view = nextV; render(); });
 }
 function goPrev(){
@@ -397,21 +405,16 @@ btnNext.addEventListener('click', goNext);
 btnPrev.addEventListener('click', goPrev);
 btnFirst.addEventListener('click', goFirst);
 btnLast.addEventListener('click', goLast);
-
 document.addEventListener('keydown', e=>{
   if(e.key==='ArrowRight') goNext();
   if(e.key==='ArrowLeft')  goPrev();
 });
-
-/* Click simple dentro del libro: mitad izq/der */
 book.addEventListener('click', (e)=>{
   if (isAnimating || suppressClick) return;
   const rect = book.getBoundingClientRect();
   const centerX = rect.left + rect.width/2;
   if (e.clientX < centerX) goPrev(); else goNext();
 });
-
-/* Rueda del mouse */
 book.addEventListener('wheel', (e)=>{
   e.preventDefault();
   if (isAnimating) return;
@@ -435,14 +438,11 @@ function startDrag(side, e){
   const pointerId = e.pointerId;
   const dir = (side==='right') ? 'forward' : 'backward';
 
-  // preview estáticos hacia destino
   const targetV = previewStaticsFor(dir);
-
   const rect = book.getBoundingClientRect();
   const startX = e.clientX;
   e.currentTarget.setPointerCapture && e.currentTarget.setPointerCapture(pointerId);
 
-  // crea overlay
   const refs = makeTurnOverlay(dir);
   setTurnDeg(refs, dir, dir==='forward' ? -8 : 8);
 
@@ -517,7 +517,6 @@ function endDrag(e){
 
   setTimeout(()=>{ suppressClick=false; }, 80);
 }
-
 for (const el of [dragLeft, dragRight]){
   el.addEventListener('pointerdown', e=>{
     const side = (e.currentTarget===dragRight) ? 'right' : 'left';
@@ -546,7 +545,6 @@ slider.addEventListener('input', ()=>{
   const N = TOTAL();
   const spreads = Math.max(0, Math.ceil(Math.max(0, N-1)/2));
   let target = Math.min(spreads, Math.max(0, parseInt(slider.value,10)));
-
   if (target===0){
     if (START_MODE==='cover') view={mode:'cover'};
     else view={mode:'spread', pairLeft:(INITIAL_SPREAD==='1-2')?1:2};

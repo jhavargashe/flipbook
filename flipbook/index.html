@@ -18,15 +18,12 @@
     </div>
 
     <div class="stack">
-      <!-- Config de inicio
-           data-start="cover" | "spread"
-           data-initial-spread="1-2" | "2-3" -->
+      <!-- data-start="cover" | "spread", data-initial-spread="1-2" | "2-3" -->
       <section id="book" class="book"
         data-start="cover"
         data-initial-spread="2-3"
         aria-label="Flipbook">
 
-        <!-- Viñeta sutil (puedes ocultarla con .gutter{display:none}) -->
         <span class="gutter"></span>
 
         <!-- Página izquierda (estática) -->
@@ -36,7 +33,7 @@
             <div class="edge"></div>
             <div class="back"></div>
           </div>
-          <!-- Sombras estáticas animables -->
+          <!-- Sombra estática animable (PE1) -->
           <div class="shadow-static left"  aria-hidden="true"></div>
           <div id="spin-left" class="spinner" aria-hidden="true"></div>
         </div>
@@ -48,17 +45,17 @@
             <div class="edge"></div>
             <div class="back"></div>
           </div>
-          <!-- Sombras estáticas animables -->
+          <!-- Sombra estática animable (PE2) -->
           <div class="shadow-static right" aria-hidden="true"></div>
           <div id="spin-right" class="spinner" aria-hidden="true"></div>
         </div>
 
-        <!-- Zonas de arrastre por borde (verticales, estrechas) -->
+        <!-- Zonas de arrastre por borde -->
         <div id="drag-left"  class="drag-zone left"  aria-label="Arrastrar atrás"></div>
         <div id="drag-right" class="drag-zone right" aria-label="Arrastrar adelante"></div>
       </section>
 
-      <!-- Banda inferior: flecha izquierda — barra — flecha derecha (alineado al libro) -->
+      <!-- Flecha — barra — flecha (alineado con el libro) -->
       <div class="bottom-band">
         <button id="edge-left"  class="edge-hint" title="Atrás">❮</button>
 
