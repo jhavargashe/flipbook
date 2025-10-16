@@ -1,3 +1,0 @@
-# Fuerza saltos de línea LF (evita $'\r' en bash)
-*.sh   text eol=lf
-*.yml  text eol=lf
