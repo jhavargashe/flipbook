@@ -3,30 +3,37 @@ name: Convert PDFs to images
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: ["**"]
     paths:
-      - 'pdfs/**'
+      - "pdfs/**"
+      - ".github/workflows/convert-pdfs.yml"
+      - ".github/scripts/convert_pdfs.sh"
+
+permissions:
+  contents: write   # <- permite commit/push desde el workflow
 
 jobs:
   build:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install converters (poppler) and ImageMagick
+      - name: Enable Actions if in a fork (no-op)
+        run: echo "Start"
+
+      - name: Install converters (poppler + imagemagick)
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils imagemagick
-          # Permitir identify/convert para JPG/PNG (PDF lo maneja poppler)
-          # (Nada que cambiar en policy.xml para nuestro flujo)
 
       - name: Convert PDFs to images
         run: bash .github/scripts/convert_pdfs.sh
 
-      - name: Commit changes
+      - name: Commit changes (if any)
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name  "github-actions[bot]"
