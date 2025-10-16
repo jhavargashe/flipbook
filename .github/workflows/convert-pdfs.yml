@@ -1,46 +1,39 @@
-name: Convert PDFs to images
+name: build
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "books/**.pdf"
-      - ".github/scripts/convert_pdfs.sh"
+      - ".github/scripts/**"
       - ".github/workflows/convert-pdfs.yml"
-  workflow_dispatch: {}
+
+permissions:
+  contents: write   # ⭐ necesario para poder hacer push
 
 jobs:
-  build:
+  convert:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0           # ⭐ historial completo (no detached)
+          persist-credentials: true
 
       - name: Install poppler (pdftoppm) and ImageMagick
         run: |
           sudo apt-get update
           sudo apt-get install -y poppler-utils imagemagick
-          # Permitir que ImageMagick procese si hiciera falta (no dependemos de PDF en IM)
-          sudo sed -i 's/<policy domain="coder" rights="none" pattern="PDF" \/>/<policy domain="coder" rights="read|write" pattern="PDF" \/>/' /etc/ImageMagick-6/policy.xml || true
 
       - name: Convert PDFs to JPGs
-        shell: bash
-        env:
-          DPI: "300"
-          QUALITY: "95"
-        run: |
-          bash .github/scripts/convert_pdfs.sh
-          # Mostrar un resumen
-          ls -la assets/books || true
+        run: bash .github/scripts/convert_pdfs.sh
 
-      - name: Commit changes (if any)
-        shell: bash
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            git config user.name  "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "chore: auto-generate page images from PDFs"
-            git push
-          else
-            echo "No hay cambios que commitear."
-          fi
+      - name: Auto-commit generated images
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(images): add/update pages generated from PDFs"
+          file_pattern: |
+            assets/books/**/pages/**
+          branch: ${{ github.ref_name }}
