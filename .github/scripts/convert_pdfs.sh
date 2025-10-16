@@ -1,51 +1,70 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Convertir todos los PDFs en /books/<slug> a JPGs en /assets/books/<slug>/pages
+
+# Hacemos el script robusto y compatible (sin exigir 'pipefail')
+set -e
+set -u
+set -o pipefail 2>/dev/null || true
+
+DPI="${DPI:-300}"             # resolución de salida (puedes 150/200/300/600)
+QUALITY="${QUALITY:-95}"      # calidad JPG (0–100)
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+BOOKS_DIR="${ROOT}/books"
+OUT_ROOT="${ROOT}/assets/books"
+
+# Requiere poppler-utils (pdftoppm)
+command -v pdftoppm >/dev/null 2>&1 || {
+  echo "ERROR: 'pdftoppm' no está instalado."; exit 1;
+}
+
 shopt -s nullglob
 
-# Convierte cada PDF que encuentre dentro de books/<libro>/ a JPGs en assets/books/<libro>/pages
-# Requisitos: ImageMagick (magick) y/o poppler-utils (ya los instala el workflow)
+# Recorre libros: /books/<slug>/*.pdf
+for bookdir in "${BOOKS_DIR}"/*; do
+  [ -d "$bookdir" ] || continue
+  slug="$(basename "$bookdir")"
 
-ROOT_DIR="$(pwd)"
+  # PDFs dentro del libro
+  pdfs=("$bookdir"/*.pdf)
+  [ ${#pdfs[@]} -gt 0 ] || continue
 
-for dir in "$ROOT_DIR"/books/*; do
-  [[ -d "$dir" ]] || continue
+  outdir="${OUT_ROOT}/${slug}/pages"
+  mkdir -p "$outdir"
 
-  # PDF de entrada: prioriza books/<libro>/source.pdf; si no, cualquier *.pdf del directorio
-  pdf=""
-  if [[ -f "$dir/source.pdf" ]]; then
-    pdf="$dir/source.pdf"
-  else
-    for f in "$dir"/*.pdf; do pdf="$f"; break; done
-  fi
+  echo "==> Libro: ${slug}"
+  # Limpiamos antiguos page-*.jpg (si existían)
+  rm -f "${outdir}"/page-*.jpg
 
-  [[ -n "${pdf}" ]] || { echo "⚠️  No hay PDF en $dir, se omite."; continue; }
+  # Si hay varios PDFs en el mismo libro, los concatenamos uno tras otro
+  page_offset=0
+  for pdf in "${pdfs[@]}"; do
+    echo "   -> PDF: $(basename "$pdf")  (DPI=${DPI}, quality=${QUALITY})"
+    # Salida temporal con prefijo dentro del propio outdir, para no mover archivos
+    # pdftoppm genera page-1.jpg, page-2.jpg, ...
+    pdftoppm -jpeg -r "${DPI}" "$pdf" "${outdir}/page"
 
-  slug="$(basename "$dir")"
-  out="$ROOT_DIR/assets/books/$slug/pages"
-  mkdir -p "$out"
+    # Re-numera si ya había páginas anteriores (evita sobreescribir si hay >1 PDF)
+    if [ $page_offset -gt 0 ]; then
+      for f in "${outdir}"/page-*.jpg; do
+        # extrae número
+        base="$(basename "$f")"              # page-12.jpg
+        num="${base#page-}"                  # 12.jpg
+        num="${num%.jpg}"                    # 12
+        newnum=$((num + page_offset))
+        mv -f "$f" "${outdir}/page-${newnum}.jpg"
+      done
+    fi
 
-  echo "📄 Libro: $slug"
-  echo "   PDF : $pdf"
-  echo "   OUT : $out"
-
-  # Limpia salidas anteriores
-  rm -f "$out"/page-*.jpg
-
-  # Conversión con ImageMagick (300 DPI, buena calidad)
-  # Nota: algunos runners bloquean PDF por policy.xml; el workflow lo ajusta.
-  magick -density 300 "$pdf" -quality 92 -alpha remove -strip "$out/page-%d.jpg"
-
-  # ImageMagick numera desde 0 -> renumeramos a base 1: page-1.jpg, page-2.jpg, ...
-  for f in "$out"/page-*.jpg; do
-    base="$(basename "$f")"
-    n="${base#page-}"; n="${n%.jpg}"       # número 0-based
-    new=$(( n + 1 ))
-    mv "$f" "$out/page-$new.jpg"
+    # actualiza el offset contando cuántas páginas hay ahora
+    count_now=$(ls -1 "${outdir}"/page-*.jpg 2>/dev/null | wc -l | tr -d ' ')
+    page_offset=$count_now
   done
 
-  # Manifest con número de páginas (opcional, útil para el visor)
-  count=$(ls "$out"/page-*.jpg 2>/dev/null | wc -l | tr -d ' ')
-  printf '{ "book": "%s", "pages": %d }\n' "$slug" "$count" > "$out/manifest.json"
+  # Ajuste de calidad con mogrify (opcional; salta si no está ImageMagick)
+  if command -v mogrify >/dev/null 2>&1; then
+    mogrify -quality "${QUALITY}" "${outdir}"/page-*.jpg || true
+  fi
 
-  echo "✅ Convertido: $count páginas para $slug"
+  echo "   => Completado: ${slug} (${page_offset} páginas)"
 done
