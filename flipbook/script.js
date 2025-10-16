@@ -52,7 +52,6 @@ let pageAR = 2/3;
 
 /********* Util *********/
 const easeInOut = t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
-const clamp01 = x => Math.max(0, Math.min(1, x));
 const TOTAL = ()=> pages.length - 1;
 
 function setPageARFrom(img){
@@ -192,8 +191,7 @@ function render(){
   updateUI();
 }
 
-/********* Sombras NUEVAS *********/
-/* Sombra destino (overlay auxiliar, ya la teníamos) */
+/********* Sombras *********/
 function ensureDestShadow(side){
   const host = (side==='left') ? pageLeft : pageRight;
   if (!host) return null;
@@ -212,7 +210,6 @@ function clearDestShadows(){
   if (b) b.remove();
 }
 
-/* Sombras estáticas (capas ya en el HTML) */
 const staticLeft  = document.querySelector('#page-left  .shadow-static.left');
 const staticRight = document.querySelector('#page-right .shadow-static.right');
 function setStaticShadow(side, opacity){
@@ -267,7 +264,7 @@ function makeTurnOverlay(direction){
   return {turn, ridge, fL, fR, bL, bR, destShadow, destSide};
 }
 
-/* Animación de giro + sombras (overlay + estáticas) */
+/* Ángulo → sombras + giro */
 function setTurnDeg(refs, direction, deg){
   const { turn, ridge, destShadow } = refs;
 
@@ -283,29 +280,26 @@ function setTurnDeg(refs, direction, deg){
 
   /* Sombra destino (overlay auxiliar) — más fuerte en CN */
   if (destShadow){
-    destShadow.style.opacity = getComputedStyle(document.documentElement)
-      .getPropertyValue('--dest-shadow-max').trim() || 0.50;
-    // escalamos por k
-    destShadow.style.opacity = (parseFloat(destShadow.style.opacity) * Math.pow(k, 1.0)).toFixed(3);
+    const max = parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue('--dest-shadow-max')) || 0.50;
+    destShadow.style.opacity = (max * Math.pow(k, 1.0)).toFixed(3);
   }
 
-  /* Sombras estáticas animadas (Fase A / Fase B) */
-  // Fase A: 90°→0°  => progA = (90 - x)/90 clamped (solo cuando x<=90)
-  // Fase B: 0°→90°  => progB = (x - 90)/90 clamped (solo cuando x>=90)
-  const progA = (x <= 90) ? (1 - x/90) : 0;         // 0→1 al acercarse a CN
-  const progB = (x >= 90) ? ((x - 90)/90) : 0;      // 0→1 al alejarse de CN
-
+  /* Sombras estáticas animadas por fase */
+  const progA = (x <= 90) ? (1 - x/90) : 0;         // Fase A: 90→0 (0→1)
+  const progB = (x >= 90) ? ((x - 90)/90) : 0;      // Fase B: 0→90 (0→1)
   const staticMax = parseFloat(getComputedStyle(document.documentElement)
     .getPropertyValue('--static-shadow-max')) || 0.55;
 
+  // 🔁 Mapeo corregido:
+  // Adelante (R→L): Fase A → derecha, Fase B → izquierda
+  // Atrás    (L→R): Fase A → izquierda, Fase B → derecha
   if (direction === 'forward'){
-    // Antes de CN: anima la izquierda (destino); después de CN: anima la derecha (la que queda atrás)
-    setStaticShadow('left',  (staticMax * progA).toFixed(3));
-    setStaticShadow('right', (staticMax * progB).toFixed(3));
+    setStaticShadow('right', (staticMax * progA).toFixed(3)); // PE2 durante A
+    setStaticShadow('left',  (staticMax * progB).toFixed(3)); // PE1 durante B
   } else {
-    // Atrás: espejo exacto
-    setStaticShadow('right', (staticMax * progA).toFixed(3));
-    setStaticShadow('left',  (staticMax * progB).toFixed(3));
+    setStaticShadow('left',  (staticMax * progA).toFixed(3)); // PE1 durante A
+    setStaticShadow('right', (staticMax * progB).toFixed(3)); // PE2 durante B
   }
 }
 
