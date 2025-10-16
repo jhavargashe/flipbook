@@ -8,8 +8,9 @@ on:
       - ".github/scripts/**"
       - ".github/workflows/convert-pdfs.yml"
 
+# ⬇️ Permisos para poder hacer push desde la Action
 permissions:
-  contents: write   # ⭐ necesario para poder hacer push
+  contents: write
 
 jobs:
   convert:
@@ -19,21 +20,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0           # ⭐ historial completo (no detached)
+          fetch-depth: 0
           persist-credentials: true
 
-      - name: Install poppler (pdftoppm) and ImageMagick
+      - name: Show branch
+        run: echo "Branch => ${{ github.ref_name }}"
+
+      - name: Install poppler (pdftoppm) + ImageMagick + dos2unix
         run: |
           sudo apt-get update
-          sudo apt-get install -y poppler-utils imagemagick
+          sudo apt-get install -y poppler-utils imagemagick dos2unix
+
+      - name: Fix line endings & make script executable
+        run: |
+          dos2unix .github/scripts/convert_pdfs.sh
+          chmod +x .github/scripts/convert_pdfs.sh
 
       - name: Convert PDFs to JPGs
-        run: bash .github/scripts/convert_pdfs.sh
+        run: .github/scripts/convert_pdfs.sh
 
       - name: Auto-commit generated images
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore(images): add/update pages generated from PDFs"
-          file_pattern: |
-            assets/books/**/pages/**
+          file_pattern: assets/books/**/pages/**
           branch: ${{ github.ref_name }}
