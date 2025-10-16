@@ -1,0 +1,39 @@
+name: Convert PDFs to images
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'pdfs/**'
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install converters (poppler) and ImageMagick
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils imagemagick
+          # Permitir identify/convert para JPG/PNG (PDF lo maneja poppler)
+          # (Nada que cambiar en policy.xml para nuestro flujo)
+
+      - name: Convert PDFs to images
+        run: bash .github/scripts/convert_pdfs.sh
+
+      - name: Commit changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "chore: convert PDFs to images [skip ci]"
+            git push
+          else
+            echo "No image changes to commit."
+          fi
